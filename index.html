@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAUT StudyHub — Sistemas Autónomos</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header id="topbar">
+  <div class="brand" onclick="location.hash='#/'">
+    <span class="logo">🤖</span>
+    <span class="brand-txt">SAUT <b>StudyHub</b></span>
+  </div>
+  <div class="top-actions">
+    <input id="global-search" type="search" placeholder="Pesquisar em todos os milestones…">
+    <button class="btn ghost" id="btn-stats" title="Stats">📊</button>
+    <button class="btn ghost" id="btn-graph" title="Grafo de conhecimento">🕸</button>
+    <button class="btn ghost" id="btn-settings" title="Definições">⚙</button>
+  </div>
+</header>
+
+<div id="search-results" class="hidden"></div>
+<main id="app"></main>
+
+<div id="settings-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3>Definições</h3>
+    <label class="toggle-row">
+      <input type="checkbox" id="free-mode"> Modo livre (ignorar bloqueio sequencial de milestones)
+    </label>
+    <div class="row gap">
+      <button class="btn" id="btn-export">⬇ Exportar progresso</button>
+      <button class="btn" id="btn-import">⬆ Importar progresso</button>
+      <input type="file" id="import-file" accept=".json" class="hidden">
+    </div>
+    <div class="row gap">
+      <button class="btn danger" id="btn-reset">Apagar todo o progresso</button>
+      <button class="btn primary" id="btn-close-settings">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/data/meta.js"></script>
+<script src="js/data/topics.js"></script>
+<script src="js/data/graph.js"></script>
+<script src="js/data/m0.js"></script>
+<script src="js/data/m1.js"></script>
+<script src="js/data/m2.js"></script>
+<script src="js/data/m3.js"></script>
+<script src="js/data/m4.js"></script>
+<script src="js/data/m5.js"></script>
+<script src="js/data/m6.js"></script>
+<script src="js/data/m7.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

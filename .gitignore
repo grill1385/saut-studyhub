@@ -1,0 +1,17 @@
+# Sistema
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Temporários / Office
+~$*
+*.tmp
+
+# Segredos (nunca commitar)
+*.token
+.env
