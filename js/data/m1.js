@@ -178,19 +178,43 @@ odo2 := GetAxisOdo(0,1);  imp2 := imp2 + odo2;</code></pre>
     <p>Nas próximas subpáginas vais resolver cada tarefa passo a passo. Faz cada experiência no SimTwo <b>antes</b> de responder — os números aqui usados são de uma execução de referência. Carrega em <b>Seguinte</b> para COMEÇAR.</p>`,
     slideRef:"SAUT_LabWork__1_Odo_en_V24Sept2024.pdf" },
 
-  { type:"labtask", title:"Sub-tarefa (a) — Calcular K",
-    context:"<p>No SimTwo: RESET POS, avança em linha reta e lê a posição final (Config Form → Robot Position) e o OdoAcum. Execução de referência: o robô avançou <b>1,000 m</b> e cada encoder acumulou <b>4900 impulsos</b>.</p>",
-    q:"Qual é a constante K, em m/impulso? (ex.: 0.000204)",
-    kind:"input", answer: 0.000204, tolerance: 0.000003, unit:"m/imp",
-    hints:["K = deslocamento da roda ÷ impulsos acumulados dessa roda.","Em linha reta ambas as rodas percorrem 1,000 m → K = 1,000/4900."],
-    solution:"<b>K = 1,000/4900 ≈ 2,041×10⁻⁴ m/imp.</b> Confere no teu SimTwo: o valor exato depende do robô, mas o método é sempre distância/impulsos. Regista o TEU valor — vais usá-lo em (d)." },
+  { type:"labtask", kind:"measure", store:"dist_a", unit:"m",
+    title:"Sub-tarefa (a1) — Mede o deslocamento linear",
+    context:"<p>No SimTwo: RESET POS (várias vezes, até OdoAcum=0) e avança em linha reta pelo menos 1 m (seta ↑ com KeyControl). Lê a posição final em Config Form (Ctrl+G) → Robot Position.</p>",
+    q:"Que distância percorreu o robô na TUA experiência? (em metros, ex.: 1.000)",
+    hints:["Se partiste de (0,0) e andaste segundo x, a distância é o próprio x final; caso geral: √(Δx²+Δy²)."] },
 
-  { type:"labtask", title:"Sub-tarefa (b) — Calcular b",
-    context:"<p>RESET POS e roda o robô no lugar ≥π rad. Referência: após uma rotação de exatamente <b>π rad</b> (180°), imp1 = <b>+2310</b> e imp2 = <b>−2310</b> (K = 2,041×10⁻⁴).</p>",
-    q:"Qual é a distância entre rodas b, em metros? (2 casas decimais)",
-    kind:"input", answer: 0.30, tolerance: 0.01, unit:"m",
-    hints:["Δθ_total = (d1 − d2)/b, com d_j = K·imp_j.","d1 = 2310×2,041e−4 ≈ 0,4715 m; d2 = −0,4715 m → b = (d1−d2)/π."],
-    solution:"d1 = K·2310 ≈ 0,4715 m, d2 ≈ −0,4715 m.<br><b>b = (d1 − d2)/Δθ = 0,943/π ≈ 0,30 m.</b><br>Nota o padrão exame: rotação no lugar → cada roda percorre um arco de raio b/2." },
+  { type:"labtask", kind:"measure", store:"imp_a", unit:"imp",
+    title:"Sub-tarefa (a2) — Mede os impulsos acumulados",
+    context:"<p>Na mesma experiência, lê o OdoAcum de cada encoder (imp1 e imp2). Em linha reta devem ser praticamente iguais — usa a média se diferirem ligeiramente.</p>",
+    q:"Quantos impulsos acumulou cada encoder na TUA experiência? (ex.: 4900)",
+    hints:["Se imp1≈imp2 usa um deles ou a média (imp1+imp2)/2 — a diferença em reta deve ser <1%."] },
+
+  { type:"labtask", kind:"calc", uses:["dist_a","imp_a"], tolPct:0.02, unit:"m/imp",
+    title:"Sub-tarefa (a3) — Calcula K com as TUAS medições",
+    q:"K = distância ÷ impulsos = dist_a / imp_a. Calcula com os valores que guardaste (ex.: 0.000204):",
+    calc: function(v){ return v.dist_a / v.imp_a; },
+    hints:["Divide a TUA distância (a1) pelos TEUS impulsos (a2).","Ordem de grandeza típica: 1e-4 a 3e-4 m/imp. Se deu muito diferente, revê as medições."],
+    solution:"K = dist_a/imp_a com as TUAS medições (o valor esperado aparece no feedback). Método do exame (P12): distância_total ÷ impulsos_totais, sempre. Guarda o teu K — a plataforma vai usá-lo na sub-tarefa (b3)." },
+
+  { type:"labtask", kind:"measure", store:"rot_b", unit:"rad",
+    title:"Sub-tarefa (b1) — Mede a rotação no lugar",
+    context:"<p>RESET POS e roda o robô no lugar pelo menos π rad (setas ←/→). Lê a variação total de orientação (theta final − inicial) na Robot Position.</p>",
+    q:"Quantos radianos rodou o robô na TUA experiência? (ex.: 3.1416)",
+    hints:["Se rodaste exatamente meia volta, será ≈ π ≈ 3.1416 rad. Usa o valor efetivo que leste, com sinal positivo."] },
+
+  { type:"labtask", kind:"measure", store:"impdif_b", unit:"imp",
+    title:"Sub-tarefa (b2) — Mede a diferença de impulsos",
+    context:"<p>Na mesma experiência de rotação, lê imp1 e imp2 (serão simétricos: um positivo, outro negativo).</p>",
+    q:"Qual é a diferença imp1 − imp2 da TUA experiência? (ex.: com imp1=+2310 e imp2=−2310 → 4620)",
+    hints:["imp1 − imp2 = imp1 + |imp2| quando têm sinais opostos. Se rodaste no sentido contrário, troca para obteres um valor positivo coerente com rot_b>0."] },
+
+  { type:"labtask", kind:"calc", uses:["dist_a","imp_a","rot_b","impdif_b"], tolPct:0.03, unit:"m",
+    title:"Sub-tarefa (b3) — Calcula b com as TUAS medições",
+    q:"b = K·(imp1−imp2)/Δθ = (dist_a/imp_a)·impdif_b/rot_b. Calcula com os teus valores (ex.: 0.30):",
+    calc: function(v){ return (v.dist_a/v.imp_a)*v.impdif_b/v.rot_b; },
+    hints:["Usa o K que calculaste em (a3) — ou diretamente dist_a/imp_a — vezes a TUA diferença de impulsos, a dividir pela TUA rotação.","Δθ = (Δd1−Δd2)/b → b = (Δd1−Δd2)/Δθ = K·(imp1−imp2)/Δθ."],
+    solution:"b = K·impdif_b/rot_b com as TUAS medições (esperado no feedback). Padrão exame: na rotação pura cada roda percorre um arco de raio b/2 — d1−d2 = b·Δθ." },
 
   { type:"labtask", title:"Sub-tarefa (c) — Movimento composto",
     context:"<p>Com VEL_LIN_NOM = 2 e INC_VEL_ANG = 0.4 (↑+→ em simultâneo), o robô descreve um arco. Após 180° de variação de ângulo podes estimar o raio pela posição final.</p>",
@@ -230,6 +254,11 @@ odo2 := GetAxisOdo(0,1);  imp2 := imp2 + odo2;</code></pre>
     options:["O erro diminui — os encoders contam mais impulsos","O erro dá saltos e cresce — derrapagem: as rodas rodam sem o robô se mover de forma correspondente","O erro mantém-se constante","O erro oscila mas volta a zero"],
     answer:1,
     hints:["O que assume o modelo de odometria sobre o contacto roda–chão?"],
-    solution:"Derrapagem (slippage): o encoder conta rotação que não corresponde a deslocamento real — o modelo de rolamento puro é violado e o erro salta e ACUMULA (nunca volta atrás sozinho). É a motivação direta do EKF (M4/M5).<br><br>🏁 <b>Labwork 1 concluída!</b> Ao terminar esta página (e as anteriores), o M1 fica completo e o M2 desbloqueia." }
+    solution:"Derrapagem (slippage): o encoder conta rotação que não corresponde a deslocamento real — o modelo de rolamento puro é violado e o erro salta e ACUMULA (nunca volta atrás sozinho). É a motivação direta do EKF (M4/M5).<br><br>🏁 <b>Labwork 1 concluída!</b> Ao terminar esta página (e as anteriores), o M1 fica completo e o M2 desbloqueia." },
+  { type:"labtask", kind:"code",
+    title:"💾 Guarda o teu código da Lab 1",
+    context:"<p>Cola aqui o teu procedimento <code>predictPosition(odo1, odo2)</code> final (e constantes K e b que usaste). Fica guardado neste milestone — podes revê-lo e copiá-lo em <b>M1 → 📄 O teu código guardado</b>.</p>",
+    q:"Snippet da Lab 1 (Pascal/SimTwo):" }
+
 ]}
 ]};

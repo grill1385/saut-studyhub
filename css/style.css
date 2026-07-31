@@ -220,3 +220,12 @@ mark{background:var(--warn); color:#101521; border-radius:3px; padding:0 2px}
 .gnode.dragging{cursor:grabbing}
 .gnode.dragging circle{stroke:#fff; stroke-width:3}
 .gnode text{pointer-events:none}
+
+/* ===== labworks v4: medições e código ===== */
+.code-ta{width:100%; background:#0d1320; border:1px solid var(--border); border-radius:10px; color:#8fd3ff;
+  font-family:Consolas,monospace; font-size:.86rem; padding:.8rem; margin:.4rem 0; resize:vertical; line-height:1.45}
+.code-ta:focus{outline:none; border-color:var(--accent)}
+.code-saved{margin-bottom:1rem}
+.code-saved-head{display:flex; gap:.8rem; align-items:center; margin-bottom:.3rem; flex-wrap:wrap}
+.code-saved pre{background:#0d1320; border:1px solid var(--border); border-radius:10px; padding:.9rem; overflow-x:auto; max-height:300px}
+.code-saved pre code{font-family:Consolas,monospace; font-size:.84rem; color:#8fd3ff; background:none; border:none; padding:0}

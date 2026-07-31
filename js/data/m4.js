@@ -396,6 +396,11 @@ X_e(3) = NormalizeAng(X_e(3));</code></pre>
     options:["Usa-se só o beacon mais próximo","Atualização sequencial: para cada beacon, recalcula-se z_e, ∇h, K e corrige-se X_e e P, reutilizando o resultado anterior","Faz-se a média das 4 medidas primeiro","Espera-se 4 ciclos"],
     answer:1,
     hints:["'For each observation the estimation of the state and its covariance are updated repeatedly…' (slide 12).","Também podias empilhar tudo num z 8×1 — mas o método do deck é o sequencial."],
-    solution:"Atualização sequencial por observação (slide 12): cada beacon corrige um pouco mais o X_e/P já corrigidos. Resultado: convergência muito mais rápida e P menor — compara os gráficos com a versão 1 beacon. Repete depois as variantes só-ângulo/só-distância (tarefa 4): com 4 beacons até a só-distância fica bem melhor (trilateração instantânea!).<br><br>🏁 <b>Labwork 4 concluída — o núcleo do exame está dominado!</b> Desbloqueaste o M5 (EKF com laser + validação), que estende isto ao sensor laser real. Antes de avançares, faz uma 2ª passagem aos flashcards dos módulos 4.1-B e 4.1-C: h, ∇h e S têm de sair de cor." }
+    solution:"Atualização sequencial por observação (slide 12): cada beacon corrige um pouco mais o X_e/P já corrigidos. Resultado: convergência muito mais rápida e P menor — compara os gráficos com a versão 1 beacon. Repete depois as variantes só-ângulo/só-distância (tarefa 4): com 4 beacons até a só-distância fica bem melhor (trilateração instantânea!).<br><br>🏁 <b>Labwork 4 concluída — o núcleo do exame está dominado!</b> Desbloqueaste o M5 (EKF com laser + validação), que estende isto ao sensor laser real. Antes de avançares, faz uma 2ª passagem aos flashcards dos módulos 4.1-B e 4.1-C: h, ∇h e S têm de sair de cor." },
+  { type:"labtask", kind:"code",
+    title:"💾 Guarda o teu código da Lab 4",
+    context:"<p>Cola o teu <code>ekf_1p_1p.m</code> completo (com os ?? preenchidos) e, se fizeste, o <code>ekf_4p.m</code>. Fica guardado neste milestone — consultável em <b>M4 → 📄 O teu código guardado</b>.</p>",
+    q:"Snippet da Lab 4 (Matlab):" }
+
 ]}
 ]};

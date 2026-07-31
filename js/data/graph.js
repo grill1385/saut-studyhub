@@ -71,7 +71,7 @@ window.SAUT_GRAPH = {
   { id:"fus", label:"Fusão sensorial", x:905, y:270, modules:["m4-mod6"],
     summary:`<p>Odometria (alta taxa, deriva) + absoluta (baixa taxa, sem deriva) → EKF pesa cada fonte pela covariância. Exemplo Lego/SimTwo: elipse encolhe a cada correção.</p>`,
     fig:"assets/slides/extriang/page-04.png" },
-  { id:"val", label:"Validação laser", x:1060, y:110, modules:[], ms:"m5",
+  { id:"val", label:"Validação laser", x:1060, y:110, modules:["m5-mod3","m5-mod4","m5-mod5"],
     summary:`<p>Detetar beacons no varrimento, clustering, validar medidas (|medida−esperada|<tol) e afinar qV/qω, rSensD/rSensA. P4: validate_laser_measure; P6: BeaconPoints = floor(arcsin(diam/dist)·N/2π).</p>` },
   { id:"mcl", label:"Monte Carlo", x:1060, y:265, modules:[], ms:"m6",
     summary:`<p>Filtro de partículas: crença representada por amostras. Kidnap e recuperação; NÃO rejeitar medidas anormalmente longas facilita recuperar da falha.</p>` },

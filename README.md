@@ -5,11 +5,11 @@ Aplicação estática (HTML + CSS + JavaScript puro), sem build e sem dependênc
 
 ## Abrir
 
-- **Online:** https://grill1385.github.io/saut-studyhub/
+- **Online:** https://GRILLFEUP.github.io/saut-studyhub/ *(substituir pelo utilizador GitHub real)*
 - **Local:** clonar o repositório e abrir `index.html` no browser.
 
 ```bash
-git clone https://github.com/grill1385/saut-studyhub.git
+git clone https://github.com/<utilizador>/saut-studyhub.git
 cd saut-studyhub
 # abrir index.html
 ```

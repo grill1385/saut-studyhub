@@ -20,6 +20,8 @@ function modState(msId, modId){
   ms.modules[modId] = ms.modules[modId] || {page:0, seen:[], quiz:{}, completed:false};
   return ms.modules[modId];
 }
+function msVars(msId){ const ms = msState(msId); ms.vars = ms.vars || {}; return ms.vars; }
+function msCode(msId){ const ms = msState(msId); ms.code = ms.code || {}; return ms.code; }
 
 /* ---------- helpers de progresso ---------- */
 function getModules(msId){ return (CONTENT[msId] && CONTENT[msId].modules) || []; }
@@ -201,7 +203,8 @@ function renderMilestone(msId){
     <div class="panel"><h4>Progresso de estudo</h4>
       <div class="seg-bar">${segs}</div><div class="seg-tip" id="seg-tip">Passa o rato sobre a barra para veres o conteúdo de cada módulo.</div>
       <div class="center">${resumeBtn}</div></div>
-    <div class="panel"><h4>Módulos</h4><div class="mod-list">${list}</div></div>`;
+    <div class="panel"><h4>Módulos</h4><div class="mod-list">${list}</div></div>
+    ${codePanelHTML(msId)}`;
 
   app.querySelectorAll(".seg").forEach(sg=>{
     sg.onmouseenter = ()=>{ const mo=mods[+sg.dataset.mi]; $("#seg-tip").innerHTML = `<b>${mo.title}</b> — ${mo.blurb||""} <i>(${Math.round(modProgress(msId,mo)*100)}%)</i>`; };
@@ -214,6 +217,7 @@ function renderMilestone(msId){
   if(rb && firstIncomplete) rb.onclick = ()=>nav(`#/${msId}/mod/${firstIncomplete.id}`);
   const msi = $("#ms-search");
   if(msi) msi.oninput = ()=>renderSearch(msi.value, msId, $("#ms-search-out"));
+  app.querySelectorAll(".code-copy").forEach(b=> b.onclick = ()=>{ copyText(msCode(msId)[b.dataset.k].text); b.textContent="✓ copiado"; setTimeout(()=>b.textContent="copiar",1100); });
   bindChips(app);
 }
 function crumb(m){ return `<div class="crumbs"><a onclick="location.hash='#/'">Dashboard</a> / ${m? m.num+" — "+m.title : ""}</div>`; }
@@ -222,6 +226,16 @@ function msPanel(m){
     <p><b>Lab Work:</b> ${m.lab}</p><p><b>Objetivo:</b> ${m.objetivo}</p>
     <p><b>Slides:</b></p><ul>${m.decks.map(d=>`<li>${d}</li>`).join("")}</ul>
     <p class="exam" style="margin-top:.6rem">${m.exame}</p></div>`;
+}
+function codePanelHTML(msId){
+  const codes = msCode(msId); const keys = Object.keys(codes).filter(k=>codes[k]&&codes[k].text&&codes[k].text.trim());
+  if(!keys.length) return "";
+  const esc = t=>t.replace(/&/g,"&amp;").replace(/</g,"&lt;");
+  return `<div class="panel"><h4>📄 O teu código guardado</h4>${keys.map(k=>
+    `<div class="code-saved"><div class="code-saved-head"><b>${codes[k].title||k}</b>
+      <span class="mini-label">${new Date(codes[k].when).toLocaleString()}</span>
+      <button class="btn small code-copy" data-k="${k}">copiar</button></div>
+      <pre><code>${esc(codes[k].text)}</code></pre></div>`).join("")}</div>`;
 }
 
 /* ---------- viewer de módulo ---------- */
@@ -310,22 +324,36 @@ function renderModule(msId, modId){
   function labtaskHTML(pg, pi){
     const qid = `p${pi}q0`, stq = st.quiz[qid]||{};
     const qc = chip(codeQ(m,mi,pi,0));
-    let inputArea;
+    const esc = t=>String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+    let inputArea, actions;
     if(pg.kind==="mcq"){
       inputArea = `<div class="q-opts">${pg.options.map((o,oi)=>`<div class="q-opt ${stq.ok&&oi===pg.answer?"right":""}" data-oi="${oi}">${String.fromCharCode(65+oi)}) ${o}</div>`).join("")}</div>`;
-    } else {
-      inputArea = `<div class="q-input"><input type="text" ${stq.ok?"disabled":""} value="${stq.ok?(stq.val??pg.answer):""}" placeholder="o teu input…">
+      actions = `<button class="btn small q-hint">💡 Dica</button><button class="btn small danger q-sol">SOLUÇÃO DIRETA</button>`;
+    } else if(pg.kind==="measure"){
+      const cur = msVars(msId)[pg.store];
+      inputArea = `<div class="q-input"><input type="text" value="${stq.ok&&cur!==undefined? cur : ""}" placeholder="a TUA medição…">
+        <span class="q-unit">${pg.unit||""}</span><button class="btn small primary q-meas">📏 Guardar medição</button></div>
+        ${stq.ok&&cur!==undefined? `<div class="q-feed hint">Medição guardada: <b>${cur}</b> ${pg.unit||""} (variável <code>${pg.store}</code>). Podes corrigi-la e voltar a guardar — os cálculos que dependem dela serão repostos.</div>`:""}`;
+      actions = `${pg.hints&&pg.hints.length? `<button class="btn small q-hint">💡 Dica</button>`:""}`;
+    } else if(pg.kind==="code"){
+      const saved = msCode(msId)[mod.id];
+      inputArea = `<textarea class="code-ta" rows="12" spellcheck="false" placeholder="// cola aqui o teu código…">${saved? esc(saved.text) : ""}</textarea>
+        <div class="q-input"><button class="btn small primary q-code">💾 Guardar código</button>
+        ${saved? `<span class="mini-label">guardado em ${new Date(saved.when).toLocaleString()} — consultável na página do milestone</span>`:""}</div>`;
+      actions = "";
+    } else {  // "input" (resposta fixa) ou "calc" (fórmula sobre as tuas medições)
+      inputArea = `<div class="q-input"><input type="text" ${stq.ok?"disabled":""} value="${stq.ok?(stq.val??""):""}" placeholder="o teu input…">
         <span class="q-unit">${pg.unit||""}</span><button class="btn small primary q-check" ${stq.ok?"disabled":""}>Submeter</button></div>`;
+      actions = `<button class="btn small q-hint">💡 Dica</button><button class="btn small danger q-sol">SOLUÇÃO DIRETA</button>`;
     }
+    const feedOk = stq.ok && pg.kind!=="measure" && pg.kind!=="code"
+      ? `<div class="q-feed good">✔ ${stq.viaSolution?"Resolvido com solução direta.":"Correto!"} ${stq.exp!==undefined? "(com as tuas medições, esperado ≈ <b>"+stq.exp+"</b>)":""}</div>${pg.solution?`<div class="q-feed hint">${pg.solution}</div>`:""}` : "";
     return `<h3>${pg.title}</h3>
       ${pg.context? `<div class="labctx">${pg.context}</div>`:""}
       <div class="q-block" data-qid="${qid}" data-qi="0" data-labtask="1">
         <div class="q-txt">${pg.q} ${qc}</div>${inputArea}
-        <div class="q-actions">
-          <button class="btn small q-hint">💡 Dica</button>
-          <button class="btn small danger q-sol">SOLUÇÃO DIRETA</button>
-        </div>
-        <div class="q-feedzone">${stq.ok?`<div class="q-feed good">✔ ${stq.viaSolution?"Resolvido com solução direta.":"Correto!"} </div>${pg.solution?`<div class="q-feed hint">${pg.solution}</div>`:""}`:""}</div>
+        <div class="q-actions">${actions}</div>
+        <div class="q-feedzone">${feedOk}</div>
       </div>`;
   }
 
@@ -362,8 +390,19 @@ function renderModule(msId, modId){
       if(chk) chk.onclick = ()=>{
         const inp = blk.querySelector("input");
         const val = inp.value.trim();
-        let ok = false;
-        if(typeof q.answer === "number"){
+        let ok = false, expected;
+        if(isLab && q.kind==="calc"){
+          const vars = msVars(msId);
+          const missing = (q.uses||[]).filter(u=>vars[u]===undefined);
+          if(missing.length){
+            fz.innerHTML = `<div class="q-feed hint">📏 Antes de calcular, guarda a(s) medição(ões): <b>${missing.join(", ")}</b> — estão nas subpáginas anteriores deste labwork.</div>`;
+            return;
+          }
+          expected = q.calc(vars);
+          const num = parseFloat(val.replace(",","."));
+          const tol = q.tolerance!==undefined? q.tolerance : Math.abs(expected)*(q.tolPct!==undefined? q.tolPct : 0.03);
+          ok = !isNaN(num) && Math.abs(num - expected) <= tol;
+        } else if(typeof q.answer === "number"){
           const num = parseFloat(val.replace(",","."));
           ok = !isNaN(num) && Math.abs(num - q.answer) <= (q.tolerance||0);
         } else {
@@ -372,15 +411,39 @@ function renderModule(msId, modId){
           ok = answers.some(a=>norm(val)===norm(a));
         }
         if(ok){
-          st.quiz[qid] = {ok:true, val:inp.value.trim()}; save();
+          const expStr = expected!==undefined? (+expected.toPrecision(4)).toString() : undefined;
+          st.quiz[qid] = {ok:true, val:inp.value.trim(), exp:expStr}; save();
           inp.disabled = true; chk.disabled = true;
-          fz.innerHTML = `<div class="q-feed good">✔ Correto! ${q.explain||""}</div>${isLab&&q.solution?`<div class="q-feed hint">${q.solution}</div>`:""}`;
+          fz.innerHTML = `<div class="q-feed good">✔ Correto! ${expStr? "(com as tuas medições, esperado ≈ <b>"+expStr+"</b>) ":""}${q.explain||""}</div>${isLab&&q.solution?`<div class="q-feed hint">${q.solution}</div>`:""}`;
           refreshCompletion();
         } else {
           const h = hints[Math.min(hintIdx, hints.length-1)];
-          fz.innerHTML = `<div class="q-feed bad">✘ Não está certo. ${h? "💡 "+h : "Revê a página anterior."}</div>`;
+          fz.innerHTML = `<div class="q-feed bad">✘ Não está certo${isLab&&q.kind==="calc"? " (a validação usa as TUAS medições guardadas)":""}. ${h? "💡 "+h : "Revê a página anterior."}</div>`;
           hintIdx++; st.quiz[qid] = Object.assign({},st.quiz[qid],{ok:false,hints:hintIdx}); save();
         }
+      };
+      // medições do utilizador
+      const mbtn = blk.querySelector(".q-meas");
+      if(mbtn) mbtn.onclick = ()=>{
+        const inp = blk.querySelector("input");
+        const num = parseFloat(inp.value.trim().replace(",","."));
+        if(isNaN(num)){ fz.innerHTML = `<div class="q-feed bad">Introduz um número válido (a TUA medição do simulador).</div>`; return; }
+        const vars = msVars(msId);
+        const changed = vars[q.store]!==undefined && vars[q.store]!==num;
+        vars[q.store] = num;
+        st.quiz[qid] = {ok:true, val:num};
+        if(changed){
+          mod.pages.forEach((p2,pj)=>{ if(p2.type==="labtask" && p2.kind==="calc" && (p2.uses||[]).includes(q.store)) delete st.quiz[`p${pj}q0`]; });
+        }
+        save(); refreshCompletion(); renderModule(msId, modId);
+      };
+      // guardar snippet de código
+      const cbtn = blk.querySelector(".q-code");
+      if(cbtn) cbtn.onclick = ()=>{
+        const ta = blk.querySelector("textarea");
+        if(!ta.value.trim()){ fz.innerHTML = `<div class="q-feed bad">O snippet está vazio — cola primeiro o teu código.</div>`; return; }
+        msCode(msId)[mod.id] = {title: mod.title, text: ta.value, when: Date.now()};
+        st.quiz[qid] = {ok:true}; save(); refreshCompletion(); renderModule(msId, modId);
       };
       const inp0 = blk.querySelector("input");
       if(inp0 && chk) inp0.onkeydown = e=>{ if(e.key==="Enter") chk.click(); };

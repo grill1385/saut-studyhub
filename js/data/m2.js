@@ -293,6 +293,11 @@ else                     v_ref := max(v_ref - DVMAX, v_target);</code></pre>`,
     options:["FollowLine com ganhos maiores","GotoXY(xi, yi) primeiro e só depois seguir a linha","Seguir a normal à linha em linha reta","Parar e pedir novo alvo"],
     answer:1,
     hints:["'If the robot is not between (xi,yi) and (xf,yf) then GotoXY(xi,yi) and then follow the line.'"],
-    solution:"Se está fora do segmento → <b>GotoXY(xi,yi)</b> e depois FollowLine; se está dentro mas longe → GotoXY até ao <b>ponto mais próximo</b> da linha. E em qualquer caso, ω limitado (4b).<br><br>🏁 <b>Labwork 2 concluída!</b> O M2 fica completo e o M3 (omnidirecional) desbloqueia. Trabalho complementar (opcional): seguir curvas paramétricas polinomiais — já tens a teoria no módulo 4." }
+    solution:"Se está fora do segmento → <b>GotoXY(xi,yi)</b> e depois FollowLine; se está dentro mas longe → GotoXY até ao <b>ponto mais próximo</b> da linha. E em qualquer caso, ω limitado (4b).<br><br>🏁 <b>Labwork 2 concluída!</b> O M2 fica completo e o M3 (omnidirecional) desbloqueia. Trabalho complementar (opcional): seguir curvas paramétricas polinomiais — já tens a teoria no módulo 4." },
+  { type:"labtask", kind:"code",
+    title:"💾 Guarda o teu código da Lab 2",
+    context:"<p>Cola o teu <code>GOTOXY</code> (máquina de estados), as rampas DVMAX/DWMAX e o <code>FollowLine</code> com o distanceToLine. Fica guardado neste milestone — consultável em <b>M2 → 📄 O teu código guardado</b>.</p>",
+    q:"Snippet da Lab 2 (Pascal/SimTwo):" }
+
 ]}
 ]};

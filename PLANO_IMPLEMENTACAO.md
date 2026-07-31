@@ -58,6 +58,20 @@ MODULE = {
 ```
 Regra de conclusão de módulo: todas as páginas vistas **e** todos os quizzes/labtasks corretos (flashcards: marcados). Labtask permite "SOLUÇÃO DIRETA" (conta como concluído mas marcado `viaSolution`).
 
+// PAGE labtask — kinds adicionais (v4, para labworks baseadas nas medições do UTILIZADOR):
+{ type:"labtask", kind:"measure", store:"nome_var", unit:"m", title, context, q, hints:[...] }
+   // guarda a medição do user em S.milestones[ms].vars[nome_var]; re-guardar com valor
+   // diferente REPÕE automaticamente os calc do módulo que usem essa var
+{ type:"labtask", kind:"calc", uses:["var1","var2"], tolPct:0.03 /*ou tolerance abs*/, unit,
+  calc: function(v){ return v.var1 / v.var2; }, q, hints, solution }
+   // valida contra a fórmula aplicada às MEDIÇÕES do user; feedback mostra o esperado
+{ type:"labtask", kind:"code", title, context, q }
+   // textarea; guarda em S.milestones[ms].code[modId]; consultável na página do
+   // milestone (painel "📄 O teu código guardado") com botão copiar
+REGRA para labworks futuras (M6/M7): SEMPRE que uma resposta dependa de valores lidos do
+simulador/robô, usar measure+calc (nunca assumir valores de referência); terminar cada
+labwork com uma página kind:"code".
+
 ## 5. Estado / progresso (localStorage `saut_progress_v1`)
 ```js
 { activeMilestone: "m1",
@@ -108,8 +122,9 @@ Perguntas do exame modelo (mapa no docx, Tabela 10) devem aparecer como exercíc
 - [x] M4 conteúdo completo (7 módulos em 2 partes: 4.1 teoria+código [KF, ∇f, h/∇h/S, exercícios do ekf_1p_1p__V2.m, trian/trilat, Lego] e 4.2 Labwork 4 guiado). Figuras kalman/, ekfbeacons/, lego/, triantrilat/, extriang/ extraídas. NOTA: decks <10 págs → pdftoppm gera page-N.png sem zero — renomear para page-0N.png!
 - [x] Features v3 (sessão 3): (1) códigos de referência automáticos e copiáveis em tudo — formato M4 / M4.3 / M4.3.2 / M4.3.2-Q1 (milestone.módulo.subpágina-questão, 1-based, derivados da posição nos arrays — NÃO renumerar módulos/páginas existentes sem avisar o utilizador!); (2) aba 📊 Stats (#/stats) — js/data/topics.js mapeia tópicos→módulos, XP/nível; (3) aba 🕸 Grafo (#/graph) — js/data/graph.js com 32 nós (summary HTML, fig opcional, modules p/ desbloqueio; nós de M5–M7 têm ms:"mX" e ficam 'stub' até o milestone ter conteúdo). v3.1: grafo é force-directed dinâmico (física repulsão+molas+gravidade, nós arrastáveis com pointer events, contido no viewBox 1000×620 sem scroll — x,y do graph.js são só posições iniciais).
 - AO GERAR M5/M6/M7: atualizar também topics.js (trocar ms:"mX" por modules:[...]) e graph.js (preencher modules:[] dos nós val/mcl/mapm/slam/mrob).
-- [ ] M5 conteúdo (stub) — PRÓXIMO PASSO: deck Loc_Validation (16 págs) + Lab5 PDF (SimTwo laser, validate_laser_measure, BeaconPoints — P4 e P6 do exame)
-- [ ] M6–M7 conteúdo (stubs criados)
+- [x] M5 conteúdo completo (6 módulos, cobertura integral do deck Loc_Validation 16/16 págs + Labwork 5 guiada 8 sub-tarefas; P4/P6 do exame; topics.js e graph.js atualizados — nó 'val' desbloqueável)
+- [ ] M6 conteúdo (stub) — PRÓXIMO PASSO: decks SAUT_Prob_Localization (23 págs) + SAUT_Loc_Map_Matching (27 págs); sem lab dedicada → módulo final = mini-teste estilo M0. Perguntas exame: MCL/kidnap, rejeição outliers (já introduzida no m5-mod2!), map matching P14, landmarks lineares. Atualizar topics.js (mcl, mapm) e graph.js (nós mcl, mapm).
+- [ ] M7 conteúdo (stub) — decks SLAM (38), MultiRobot (12), Drone (8) + Labs 6/7 (checklist guiado). Atualizar topics.js (slam, mrob) e graph.js (slam, mrob).
 
 ## 11. AVISO — escrita de ficheiros (sync Windows↔sandbox)
 Reescrever/editar via ferramenta de ficheiros um .js JÁ EXISTENTE corrompe a cópia do sandbox

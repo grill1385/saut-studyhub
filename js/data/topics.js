@@ -25,7 +25,7 @@ window.SAUT_TOPICS = [
     { id:"ekf",     name:"EKF — beacons",                  modules:["m4-mod2","m4-mod3","m4-mod4","m4-mod7"] },
     { id:"trian",   name:"Triangulação e trilateração",    modules:["m4-mod5"] },
     { id:"fusao",   name:"Fusão sensorial",                modules:["m4-mod6"] },
-    { id:"laser",   name:"EKF laser + validação",          ms:"m5" },
+    { id:"laser",   name:"EKF laser + validação",          modules:["m5-mod1","m5-mod2","m5-mod3","m5-mod4","m5-mod5","m5-mod6"] },
     { id:"mcl",     name:"Localização Monte Carlo",        ms:"m6" },
     { id:"mapm",    name:"Map matching",                   ms:"m6" }
   ]},
