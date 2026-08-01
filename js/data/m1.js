@@ -11,7 +11,7 @@ window.SAUT_CONTENT["m1"] = { modules: [
     <span class="formula">ẋ(t) = v(t)·cos(θ(t))<br>ẏ(t) = v(t)·sin(θ(t))<br>θ̇(t) = ω(t)</span>
     <p>onde as velocidades do robô vêm das velocidades lineares das duas rodas (b = distância entre rodas):</p>
     <span class="formula">v(t) = (v1(t) + v2(t)) / 2 &nbsp;&nbsp;&nbsp;&nbsp; ω(t) = (v1(t) − v2(t)) / b</span>
-    <div class="hl">Convenção: v1 = roda direita, v2 = roda esquerda (confirma o sinal de ω no simulador — se rodar ao contrário, troca!). A velocidade lateral é sempre 0: o diferencial é não-holonómico.</div>`,
+    <div class="hl">Convenção <b>deste deck</b>: v1 = roda direita, v2 = roda esquerda, ω>0 = rodar à esquerda (anti-horário). <b>Os índices dependem do robô:</b> no SimTwo das Labs 1 e 2 o eixo 0 é a roda ESQUERDA e o eixo 1 a DIREITA — por isso o código de lá usa <code>(odo2−odo1)</code> no Δθ.<br><b>Regra de coerência (decora esta, não os índices):</b> a roda que leva <code>+ω·b/2</code> no <code>MotorVel()</code> tem de ser exatamente a que aparece com sinal <b>+</b> no numerador de Δθ. Se trocares uma sem trocar a outra, o robô roda para um lado e a odometria acredita que rodou para o outro.<br>A velocidade lateral é sempre 0: o diferencial é não-holonómico.</div>`,
     figures:[{src:"assets/slides/kinematics/page-04.png", caption:"Slide 4 — Equações contínuas da tração diferencial", focus:"o sistema de 3 equações e as fórmulas de v(t) e ω(t) — memoriza a divisão por 2 e por b"}],
     slideRef:"MobileRobotics_KinematicsDynamics, págs. 3–4" },
 
@@ -72,13 +72,20 @@ window.SAUT_CONTENT["m1"] = { modules: [
     html:`<p>Usar a orientação <b>média</b> do ciclo, θ(i) + Δθ(i)/2:</p>
     <span class="formula">x(i+1) = x(i) + Δd(i)·cos(θ(i) + Δθ(i)/2)<br>y(i+1) = y(i) + Δd(i)·sin(θ(i) + Δθ(i)/2)<br>θ(i+1) = θ(i) + Δθ(i)</span>
     <div class="exam">P1 do exame: centered é MAIS PRECISA que forward porque usa a orientação média durante o deslocamento (aproximação de 2ª ordem do arco), reduzindo o erro de discretização em trajetórias curvas.</div>
-    <div class="exam">P2 do exame: escrever este código. Em Pascal/SimTwo:<br>
+    <div class="exam">P2 do exame: escrever este código. Forma <b>canónica</b> (convenção 1 = roda direita) — é esta que deves escrever no papel:<br>
     <code>ds := K*(odo1+odo2)/2;</code><br>
     <code>dtheta := K*(odo1-odo2)/b;</code><br>
     <code>x := x + ds*cos(theta + dtheta/2);</code><br>
     <code>y := y + ds*sin(theta + dtheta/2);</code><br>
     <code>theta := theta + dtheta;</code></div>
-    <p>Nota: θ é atualizado <b>depois</b> de x e y (usa o θ antigo dentro do cos/sin!).</p>`,
+    <p>Nota: θ é atualizado <b>depois</b> de x e y (usa o θ antigo dentro do cos/sin!).</p>
+    <div class="hl">⚠ <b>No SimTwo das Labs 1/2 o código real é ligeiramente diferente</b> — K chama-se <code>ToMetres</code>, b chama-se <code>WheelDist</code> e o eixo 0 é a roda <b>esquerda</b>:<br>
+    <code>d := (odo1+odo2)/2.0 * ToMetres;</code><br>
+    <code>delta_theta := (odo2-odo1) * ToMetres/WheelDist;</code><br>
+    <code>x := x + d*cos(theta + delta_theta/2);</code><br>
+    <code>y := y + d*sin(theta + delta_theta/2);</code><br>
+    <code>theta := NormalizeAngle(theta + delta_theta);</code><br>
+    Duas diferenças que importam: (1) o Δθ é <code>(odo2−odo1)</code> porque os índices das rodas estão trocados face à convenção do deck — confere com o <code>MotorVel()</code>, onde é o <code>v2</code> que leva <code>+ω·b/2</code>; (2) há um <code>NormalizeAngle</code> no θ. Sem ele o ângulo cresce sem limite e o <code>erro_ang</code> do GotoXY (M2) manda o robô dar a volta longa — é a mesma armadilha que reaparece na inovação do EKF em M4/M5.</div>`,
     figures:[{src:"assets/slides/kinematics/page-07.png", caption:"Slide 7 — Centered difference discretization", focus:"o termo θ(i)+Δθ(i)/2 dentro do cos e do sin — é ISTO que o exame pede"}],
     slideRef:"Kinematics, pág. 7" },
 
@@ -91,7 +98,7 @@ window.SAUT_CONTENT["m1"] = { modules: [
       options:["theta","theta + dtheta","theta + dtheta/2","dtheta/2"], answer:2,
       hint:"Orientação média do ciclo.",
       explain:"x := x + ds*cos(theta + dtheta/2). Se usares theta+dtheta estás a usar a orientação FINAL (também errado)." },
-    { kind:"flash", front:"Escreve mentalmente (ou em papel!) o pose_update completo em 5 linhas.", back:"ds:=K*(odo1+odo2)/2;<br>dtheta:=K*(odo1-odo2)/b;<br>x:=x+ds*cos(theta+dtheta/2);<br>y:=y+ds*sin(theta+dtheta/2);<br>theta:=theta+dtheta;<br><i>Treina por ESCRITO — cai quase sempre.</i>" },
+    { kind:"flash", front:"Escreve mentalmente (ou em papel!) o pose_update completo em 5 linhas.", back:"ds:=K*(odo1+odo2)/2;<br>dtheta:=K*(odo1-odo2)/b;<br>x:=x+ds*cos(theta+dtheta/2);<br>y:=y+ds*sin(theta+dtheta/2);<br>theta:=theta+dtheta;<br><i>Treina por ESCRITO — cai quase sempre.</i><br><br>No SimTwo real: <code>(odo2-odo1)</code> (eixo 0 = roda esquerda) e <code>theta := NormalizeAngle(...)</code>." },
     { kind:"mcq", q:"Porque é que theta só é atualizado na última linha?",
       options:["Por convenção de estilo","Porque x e y devem usar o theta do início do ciclo (+dtheta/2), não o final","Porque o compilador exige","Não faz diferença"], answer:1,
       explain:"Se atualizasses theta primeiro, cos(theta+dtheta/2) usaria θ(i+1)+Δθ/2 — deslocamento com orientação errada." }
@@ -227,13 +234,13 @@ odo2 := GetAxisOdo(0,1);  imp2 := imp2 + odo2;</code></pre>
     context:"<p>Vais agora implementar <code>predictPosition(odo1, odo2: double)</code> no editor do SimTwo (Ctrl+E), chamada em cada ciclo a partir de <code>Control</code>.</p>",
     q:"Qual é o par de expressões correto para o deslocamento e rotação do ciclo?",
     kind:"mcq",
-    options:["ds := K*(odo1−odo2)/2; dtheta := K*(odo1+odo2)/b;",
-             "ds := K*(odo1+odo2)/2; dtheta := K*(odo1−odo2)/b;",
-             "ds := K*(odo1+odo2)/b; dtheta := K*(odo1−odo2)/2;",
-             "ds := (odo1+odo2)/(2*K); dtheta := (odo1−odo2)/(b*K);"],
+    options:["d := (odo1−odo2)/2.0*ToMetres; delta_theta := (odo1+odo2)*ToMetres/WheelDist;",
+             "d := (odo1+odo2)/2.0*ToMetres; delta_theta := (odo2−odo1)*ToMetres/WheelDist;",
+             "d := (odo1+odo2)*ToMetres/WheelDist; delta_theta := (odo2−odo1)*ToMetres/2.0;",
+             "d := (odo1+odo2)/(2.0*ToMetres); delta_theta := (odo2−odo1)/(WheelDist*ToMetres);"],
     answer:1,
-    hints:["Média das rodas → avanço; diferença ÷ b → rotação.","Os impulsos multiplicam por K (m/imp) para dar metros."],
-    solution:"<code>ds := K*(odo1+odo2)/2;</code> e <code>dtheta := K*(odo1−odo2)/b;</code> — módulo 1 deste milestone. A opção D inverte K (dividiria por K)." },
+    hints:["Média das rodas → avanço; diferença ÷ WheelDist → rotação.","Os impulsos MULTIPLICAM por ToMetres (m/impulso) para dar metros — não dividem.","Neste robô o eixo 0 (odo1) é a roda ESQUERDA, por isso no Δθ ela entra com sinal −."],
+    solution:"<code>d := (odo1+odo2)/2.0*ToMetres;</code> e <code>delta_theta := (odo2−odo1)*ToMetres/WheelDist;</code>.<br><code>ToMetres</code> é o K (m/impulso) e <code>WheelDist</code> é o b — só mudam os nomes. O Δθ é <code>(odo2−odo1)</code> e não <code>(odo1−odo2)</code> porque neste SimTwo o eixo 0 é a roda esquerda; é coerente com o <code>MotorVel()</code>, onde é o <code>v2</code> que leva <code>+ω·b/2</code>. A opção D inverte ToMetres (dividiria em vez de multiplicar)." },
 
   { type:"labtask", title:"Sub-tarefa (d2) — predictPosition: atualização da pose",
     context:"<p>Falta o corpo principal. Lembra-te: discretização CENTRADA e θ atualizado no fim.</p>",
@@ -245,7 +252,7 @@ odo2 := GetAxisOdo(0,1);  imp2 := imp2 + odo2;</code></pre>
              "x:=x+ds*cos(dtheta/2); y:=y+ds*sin(dtheta/2); theta:=theta+dtheta;"],
     answer:2,
     hints:["Orientação média do ciclo dentro do cos/sin.","A opção A é a forward (menos precisa); a B atualiza theta cedo demais."],
-    solution:"Opção C — o pose_update centrado (P2 do exame!):<br><code>x := x + ds*cos(theta + dtheta/2);<br>y := y + ds*sin(theta + dtheta/2);<br>theta := theta + dtheta;</code><br>Escreve-o no SimTwo, inicializa (x,y,theta) com a pose mostrada no simulador e corre." },
+    solution:"Opção C — o pose_update centrado (P2 do exame!):<br><code>x := x + ds*cos(theta + dtheta/2);<br>y := y + ds*sin(theta + dtheta/2);<br>theta := theta + dtheta;</code><br>No SimTwo envolve a última linha em <code>NormalizeAngle(...)</code> para manter θ em [−π, π] — o GotoXY do M2 depende disso.<br>Escreve-o no SimTwo, inicializa (x,y,theta) com a pose mostrada no simulador e corre." },
 
   { type:"labtask", title:"Sub-tarefa (e) — Observar o erro",
     context:"<p>Liga o Chart na Sheet form, Ctrl+T → User Charts: pose real vs estimada. Conduz suavemente; depois faz acelerações e travagens bruscas.</p>",
