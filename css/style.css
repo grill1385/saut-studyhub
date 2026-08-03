@@ -229,3 +229,20 @@ mark{background:var(--warn); color:#101521; border-radius:3px; padding:0 2px}
 .code-saved-head{display:flex; gap:.8rem; align-items:center; margin-bottom:.3rem; flex-wrap:wrap}
 .code-saved pre{background:#0d1320; border:1px solid var(--border); border-radius:10px; padding:.9rem; overflow-x:auto; max-height:300px}
 .code-saved pre code{font-family:Consolas,monospace; font-size:.84rem; color:#8fd3ff; background:none; border:none; padding:0}
+
+/* ===== avaliação automática de código (labwork) ===== */
+.sig{font-size:.82rem;color:var(--muted);margin:.4rem 0 .3rem}
+.sig code{font-size:.82rem}
+textarea.code-eval{width:100%;min-height:22rem;font-family:ui-monospace,"Cascadia Code",Consolas,monospace;
+  font-size:.84rem;line-height:1.45;tab-size:2;white-space:pre;overflow-wrap:normal;overflow-x:auto}
+table.testtab{width:100%;border-collapse:collapse;margin:.6rem 0;font-size:.84rem}
+table.testtab td{padding:.32rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}
+table.testtab td:first-child{width:1.6rem;text-align:center;font-weight:700}
+table.testtab tr.tok td:first-child{color:#3fb950}
+table.testtab tr.tko td:first-child{color:#f85149}
+table.testtab tr.tko td:nth-child(2){font-weight:600}
+table.testtab code{font-size:.8rem;word-break:break-all}
+.q-feed.warn{border-left:3px solid #d29922;background:rgba(210,153,34,.08)}
+.soltitle{margin:.9rem 0 .3rem;font-weight:700;font-size:.9rem}
+pre.pas{background:var(--panel2,rgba(127,127,127,.08));border:1px solid var(--line);border-radius:6px;
+  padding:.7rem .8rem;overflow-x:auto;font-size:.8rem;line-height:1.45;white-space:pre}

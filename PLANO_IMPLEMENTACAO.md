@@ -123,6 +123,11 @@ Perguntas do exame modelo (mapa no docx, Tabela 10) devem aparecer como exercíc
 - [x] Features v3 (sessão 3): (1) códigos de referência automáticos e copiáveis em tudo — formato M4 / M4.3 / M4.3.2 / M4.3.2-Q1 (milestone.módulo.subpágina-questão, 1-based, derivados da posição nos arrays — NÃO renumerar módulos/páginas existentes sem avisar o utilizador!); (2) aba 📊 Stats (#/stats) — js/data/topics.js mapeia tópicos→módulos, XP/nível; (3) aba 🕸 Grafo (#/graph) — js/data/graph.js com 32 nós (summary HTML, fig opcional, modules p/ desbloqueio; nós de M5–M7 têm ms:"mX" e ficam 'stub' até o milestone ter conteúdo). v3.1: grafo é force-directed dinâmico (física repulsão+molas+gravidade, nós arrastáveis com pointer events, contido no viewBox 1000×620 sem scroll — x,y do graph.js são só posições iniciais).
 - AO GERAR M5/M6/M7: atualizar também topics.js (trocar ms:"mX" por modules:[...]) e graph.js (preencher modules:[] dos nós val/mcl/mapm/slam/mrob).
 - [x] M5 conteúdo completo (6 módulos, cobertura integral do deck Loc_Validation 16/16 págs + Labwork 5 guiada 8 sub-tarefas; P4/P6 do exame; topics.js e graph.js atualizados — nó 'val' desbloqueável)
+- [x] v5 (sessão 4): motor de **avaliação automática de código** (`js/pascal.js`, `js/grader.js`)
+  e **Labwork 3 reformulada** (`js/data/lab3spec.js` + `js/data/m3lab.js`, que substitui o
+  m3-mod6 em runtime — `m3.js` não foi tocado). Ver secção 12. Testes: `tools/smoke_hub.js`
+  (jsdom, UI + oráculo) e `tools/gen_lab3spec.py` (regenera a spec).
+- [ ] Labs 4/5/6 avaliáveis — ver tabela 12.4 (começar pela Lab 5)
 - [ ] M6 conteúdo (stub) — PRÓXIMO PASSO: decks SAUT_Prob_Localization (23 págs) + SAUT_Loc_Map_Matching (27 págs); sem lab dedicada → módulo final = mini-teste estilo M0. Perguntas exame: MCL/kidnap, rejeição outliers (já introduzida no m5-mod2!), map matching P14, landmarks lineares. Atualizar topics.js (mcl, mapm) e graph.js (nós mcl, mapm).
 - [ ] M7 conteúdo (stub) — decks SLAM (38), MultiRobot (12), Drone (8) + Labs 6/7 (checklist guiado). Atualizar topics.js (slam, mrob) e graph.js (slam, mrob).
 
@@ -135,3 +140,61 @@ conteúdo de um ficheiro existente (ex.: stubs mX.js):
 3. esvaziar o auxiliar via bash (`printf '// pode ser apagado\n' > mX_full.js`);
 4. se aparecerem NULs no fim de um ficheiro: `python3 -c "d=open(f,'rb').read().rstrip(b'\x00'); open(f,'wb').write(d)"`.
 Verificação padrão: node --check a todos os js + smoke test jsdom (ver histórico da sessão 2).
+
+
+## 12. Avaliação automática de código nas labworks (v5, sessão 4)
+
+**Motivação:** as pastas `SAUTO/Lab_3` … `Lab_6` incluem o *código de solução do professor*
+(SimTwo `.pas`/`.spas`, MATLAB `.m`, C++). A partir da Lab 3 as labworks deixam de ser só
+perguntas de input: o utilizador **escreve a rotina** e o hub **avalia-a**.
+
+### 12.1 Arquitetura (3 camadas)
+1. **`js/pascal.js`** — mini-transpilador do subconjunto de Pascal usado no SimTwo → JavaScript.
+   Lexer + parser recursivo-descendente + codegen para `new Function`. Suporta `const`/`var`/
+   `procedure`/`function` (incl. **parâmetros `var` por referência**, via caixas `{__v:…}`),
+   `begin/end`, `if`, `case`, `for`, `while`, `repeat`, arrays, records, e uma API SimTwo
+   mockada (`GetRCValue`/`SetRCValue`, `GetAxisOdo`, `NormalizeAngle`, `Deg`, `format`, …).
+   Case-insensitive (tudo normalizado para minúsculas, como em Pascal).
+   Guarda contra ciclos infinitos (`RT.__tick`, 4e6 passos).
+   API: `SAUT_PASCAL.build(src, {globals, env})` → `{R, RT, G, env, call(nome, args)}`.
+2. **`js/grader.js`** — avaliador híbrido.
+   - *Estrutural*: regras regex sobre o código normalizado (`rules[]`), com `level:"error"|"warn"`.
+   - *Execução*: compila o código do utilizador **e** a solução do professor com o mesmo
+     `prelude`, corre ambos nos mesmos casos e compara **sinais** (`RC.V`, globais em `watch`,
+     argumentos por referência em `watchArgs`, células em `watchCells`, valor de retorno).
+   - *Malha fechada*: casos com `steps` simulam o robô omni (planta mecanum invertida a partir
+     de `RC.V`) e comparam trajetórias — é o que verifica convergência e paragem.
+   - `grade(task, src)` → `{ok, phase, passed, total, tests[], rules[], error}`;
+     `pickHint(task, res)` escolhe a dica (regra `error` em falta → `signalHints` do sinal
+     divergente → qualquer regra em falta).
+3. **`js/data/lab3spec.js`** — `window.SAUT_LABSPEC["m3-mod6"][tarefa]` com
+   `{entry, signature, starter, prelude, solution, globals, watch/watchArgs, sheet0, tests[],
+   rules[], signalHints{}, hints[]}`. **GERADO** por `tools/gen_lab3spec.py` a partir de
+   `SAUTO/Lab_3/SimTwo_Omni_sol_LabW_3.zip → RobotFactoryMecanum4Wheel/control.pas`
+   (não editar à mão: reexecutar o gerador).
+
+### 12.2 Novo tipo de página
+```js
+{ type:"labtask", kind:"codeeval", task:"gotoxy", title, q, context }
+```
+Renderizado por `labtaskHTML`; a spec vem de `labSpec(mod.id, pg.task)`.
+Estado: `st.quiz[qid] = {ok, tries, report(HTML), revealed, viaSolution}`;
+código do utilizador em `S.milestones[ms].codeTasks[task]`.
+Solução do professor desbloqueia com `REVEAL_TRIES = 3` (constante no `app.js`).
+
+### 12.3 Princípio de correção
+Compara-se **comportamento, não texto**. Verificado com: solução do professor (passa),
+reescritas equivalentes com `if/else`/`sign()`/outra matemática (passam), e erros clássicos
+(`Vmax` fixado, falta de `NormalizeAngle`, histerese trocada — todos reprovados).
+Os casos de teste incluem cenários desenhados de propósito para distinguir
+`TOL_FINDIST` de `DIST_NEWPOSE` e `TOL_FINTHETA` de `THETA_NEWPOSE`.
+
+### 12.4 Como replicar para as Labs 4, 5 e 6
+| Lab | Solução disponível | O que falta construir |
+|-----|--------------------|-----------------------|
+| 4 | `Lab_4/ekf_1p_1p_solution_V2_tested.m`, `ekf_4p_solution.m` | transpilador **MATLAB** (subconjunto: matrizes, `*`, `'`, `inv`, `eye`, indexação, `if/for`) + `lab4spec.js` |
+| 5 | `Lab_5/SimTwo64_LabWork__5_EKF.zip → EKF_Beacon_Laser_Sol/NXTControl.spas` | reutiliza `pascal.js`; falta runtime de **matrizes** (`MMult`, `Mtran`, `Minv`, `Madd`, `Msub`, `Meye`, `RangeToMatrix`, `MatrixToRange`) + `lab5spec.js` |
+| 6 | `Lab_6/SAUT_ESP_-_stud.zip` (parcial), `picoRobotSAUT.zip` | transpilador **C++** ou avaliação só estrutural; solução incompleta |
+
+Ordem recomendada: **Lab 5** (só precisa da biblioteca de matrizes sobre o transpilador que já
+existe) → **Lab 4** → **Lab 6**.

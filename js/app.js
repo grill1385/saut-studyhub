@@ -22,6 +22,32 @@ function modState(msId, modId){
 }
 function msVars(msId){ const ms = msState(msId); ms.vars = ms.vars || {}; return ms.vars; }
 function msCode(msId){ const ms = msState(msId); ms.code = ms.code || {}; return ms.code; }
+function msCodeTasks(msId){ const ms = msState(msId); ms.codeTasks = ms.codeTasks || {}; return ms.codeTasks; }
+/* ---------- avaliação de código (labspec) ---------- */
+const REVEAL_TRIES = 3;
+function labSpec(modId, taskId){
+  const bank = window.SAUT_LABSPEC && window.SAUT_LABSPEC[modId];
+  return bank ? bank[taskId] : null;
+}
+function evalReportHTML(res, spec){
+  const esc = t=>String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+  if(res.phase === "vazio") return `<div class="q-feed bad">${res.error}</div>`;
+  if(res.phase === "sintaxe" || res.phase === "interno")
+    return `<div class="q-feed bad">🛑 ${res.error}</div>
+      <div class="q-feed hint">O avaliador só percebe o subconjunto de Pascal usado no SimTwo. Confirma <code>:=</code> nas atribuições, <code>;</code> no fim de cada instrução e <code>begin/end</code> emparelhados.</div>`;
+  const rows = res.tests.map(t=>`<tr class="${t.ok?"tok":"tko"}">
+      <td>${t.ok?"✔":"✘"}</td><td>${t.name}</td><td>${t.ok?"":(t.detail||"")}</td></tr>`).join("");
+  const head = res.ok
+    ? `<div class="q-feed good">✔ <b>Passou nos ${res.total} testes.</b> O teu código produz os mesmos sinais que a solução do professor.</div>`
+    : `<div class="q-feed bad">✘ <b>${res.passed} de ${res.total} testes.</b> Os sinais gerados não coincidem com a solução.</div>`;
+  const hint = res.ok ? "" : (function(){
+    const h = window.SAUT_GRADER.pickHint(spec, res);
+    return h ? `<div class="q-feed hint">💡 ${h}</div>` : "";
+  })();
+  const warn = res.ok ? "" : res.rules.filter(r=>!r.ok).slice(0,3)
+      .map(r=>`<div class="q-feed warn">⚠ ${r.msg}</div>`).join("");
+  return head + `<table class="testtab"><tbody>${rows}</tbody></table>` + hint + warn;
+}
 
 /* ---------- helpers de progresso ---------- */
 function getModules(msId){ return (CONTENT[msId] && CONTENT[msId].modules) || []; }
@@ -341,10 +367,39 @@ function renderModule(msId, modId){
         <div class="q-input"><button class="btn small primary q-code">💾 Guardar código</button>
         ${saved? `<span class="mini-label">guardado em ${new Date(saved.when).toLocaleString()} — consultável na página do milestone</span>`:""}</div>`;
       actions = "";
+    } else if(pg.kind==="codeeval"){
+      const spec = labSpec(mod.id, pg.task);
+      const savedTxt = msCodeTasks(msId)[pg.task];
+      const tries = stq.tries||0;
+      const txt = savedTxt!==undefined ? savedTxt : (spec && spec.starter ? spec.starter : "");
+      inputArea = `${spec&&spec.signature? `<div class="sig">Assinatura obrigatória: <code>${esc(spec.signature)}</code></div>`:""}
+        <textarea class="code-ta code-eval" rows="18" spellcheck="false">${esc(txt)}</textarea>
+        <div class="q-input">
+          <button class="btn small primary q-eval">▶ Avaliar código</button>
+          <button class="btn small q-restore">↺ Repor esqueleto</button>
+          <span class="mini-label">${tries} tentativa${tries===1?"":"s"}${stq.ok?" · resolvido":""}</span>
+        </div>`;
+      const canSee = stq.ok || tries>=REVEAL_TRIES;
+      actions = `<button class="btn small q-hint">💡 Dica</button>` + (canSee
+        ? `<button class="btn small danger q-showsol">📖 ${stq.revealed?"Esconder":"Ver"} solução do professor</button>` +
+          (stq.ok? "" : `<button class="btn small danger q-sol">Marcar como resolvido com solução</button>`)
+        : `<span class="mini-label">🔒 solução do professor disponível após ${REVEAL_TRIES} tentativas</span>`);
     } else {  // "input" (resposta fixa) ou "calc" (fórmula sobre as tuas medições)
       inputArea = `<div class="q-input"><input type="text" ${stq.ok?"disabled":""} value="${stq.ok?(stq.val??""):""}" placeholder="o teu input…">
         <span class="q-unit">${pg.unit||""}</span><button class="btn small primary q-check" ${stq.ok?"disabled":""}>Submeter</button></div>`;
       actions = `<button class="btn small q-hint">💡 Dica</button><button class="btn small danger q-sol">SOLUÇÃO DIRETA</button>`;
+    }
+    if(pg.kind==="codeeval"){
+      const spec = labSpec(mod.id, pg.task);
+      const rep = stq.report || (stq.viaSolution? `<div class="q-feed good">✔ Resolvido com a solução do professor.</div>` : "");
+      const sol = (stq.revealed && spec) ? `<div class="soltitle">Solução do professor — <i>${spec.signature||""}</i></div><pre class="pas">${esc(spec.solution)}</pre>` : "";
+      return `<h3>${pg.title}</h3>
+        ${pg.context? `<div class="labctx">${pg.context}</div>`:""}
+        <div class="q-block" data-qid="${qid}" data-qi="0" data-labtask="1">
+          <div class="q-txt">${pg.q} ${qc}</div>${inputArea}
+          <div class="q-actions">${actions}</div>
+          <div class="q-feedzone">${rep}${sol}</div>
+        </div>`;
     }
     const feedOk = stq.ok && pg.kind!=="measure" && pg.kind!=="code"
       ? `<div class="q-feed good">✔ ${stq.viaSolution?"Resolvido com solução direta.":"Correto!"} ${stq.exp!==undefined? "(com as tuas medições, esperado ≈ <b>"+stq.exp+"</b>)":""}</div>${pg.solution?`<div class="q-feed hint">${pg.solution}</div>`:""}` : "";
@@ -436,6 +491,44 @@ function renderModule(msId, modId){
           mod.pages.forEach((p2,pj)=>{ if(p2.type==="labtask" && p2.kind==="calc" && (p2.uses||[]).includes(q.store)) delete st.quiz[`p${pj}q0`]; });
         }
         save(); refreshCompletion(); renderModule(msId, modId);
+      };
+      // avaliação automática de código (labspec)
+      const ebtn = blk.querySelector(".q-eval");
+      if(ebtn) ebtn.onclick = ()=>{
+        const spec = labSpec(mod.id, q.task);
+        const ta = blk.querySelector("textarea");
+        msCodeTasks(msId)[q.task] = ta.value;
+        if(!spec || !window.SAUT_GRADER){
+          fz.innerHTML = `<div class="q-feed bad">Avaliador indisponível (falta carregar js/pascal.js, js/grader.js ou a spec desta labwork).</div>`;
+          return;
+        }
+        fz.innerHTML = `<div class="q-feed hint">⏳ A correr os testes…</div>`;
+        setTimeout(()=>{
+          let res;
+          try { res = window.SAUT_GRADER.grade(spec, ta.value); }
+          catch(err){ fz.innerHTML = `<div class="q-feed bad">Erro inesperado no avaliador: ${err}</div>`; return; }
+          const prev = st.quiz[qid]||{};
+          st.quiz[qid] = Object.assign({}, prev, {
+            ok: res.ok,
+            tries: (prev.tries||0)+1,
+            report: evalReportHTML(res, spec)
+          });
+          save(); refreshCompletion(); renderModule(msId, modId);
+        }, 20);
+      };
+      const rbtn = blk.querySelector(".q-restore");
+      if(rbtn) rbtn.onclick = ()=>{
+        const spec = labSpec(mod.id, q.task);
+        if(!spec) return;
+        if(!confirm("Repor o esqueleto? Perdes o código que escreveste nesta sub-tarefa.")) return;
+        delete msCodeTasks(msId)[q.task];
+        save(); renderModule(msId, modId);
+      };
+      const ssb = blk.querySelector(".q-showsol");
+      if(ssb) ssb.onclick = ()=>{
+        st.quiz[qid] = Object.assign({ok:false}, st.quiz[qid]);
+        st.quiz[qid].revealed = !st.quiz[qid].revealed;
+        save(); renderModule(msId, modId);
       };
       // guardar snippet de código
       const cbtn = blk.querySelector(".q-code");
