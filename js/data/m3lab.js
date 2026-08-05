@@ -221,7 +221,35 @@ verificam os dois casos.</p>`),
 pelo <code>Dist2Arc</code>, exatamente como no <code>FollowLine</code>. O ponto final do arco é
 <code>xf = xc + R·cos(angf)</code>, <code>yf = yc + R·sin(angf)</code>.</p>`),
 
-      /* ------------------------------------------------ 9. entrega */
+      /* ------------------------------------------------ 9. GotoXY sem FSM */
+      code("gotoxycont",
+        "Sub-tarefa 3.6.10 — <code>GotoXY</code> sem máquina de estados",
+        "Reescreve o <code>GotoXY</code> como um <b>único procedimento contínuo</b>: sem <code>case</code>, sem <code>state_Lin</code>/<code>state_Rot</code>, só leis proporcionais a correr em paralelo.",
+        `<div class="labctx"><b>⚠️ Aviso.</b> Esta é a tarefa 4 do enunciado, para a qual o professor
+<b>não distribuiu solução de referência</b>. A solução usada aqui como oráculo foi escrita para o
+StudyHub — passar neste avaliador confirma que o teu controlador converge e pára, mas
+<b>não garante</b> equivalência com o que o professor espera na avaliação.</div>
+<p>A pergunta de fundo é: porque é que a FSM era precisa? Não era — era precisa <i>no diferencial</i>.
+Num robô omni os três graus de liberdade (V, Vn, W) são independentes, portanto não há fases
+obrigatórias a sequenciar. Podes controlar posição e orientação ao mesmo tempo.</p>
+<p>A tradução de cada estado para a versão contínua:</p>
+<table>
+  <tr><th>Na FSM</th><th>Na versão contínua</th></tr>
+  <tr><td><code>Go_Forward</code> (velocidade nominal)</td><td><b>saturação</b> em <code>VEL_LIN_NOM</code></td></tr>
+  <tr><td><code>De_Accel_Lin</code> (nominal /3)</td><td>desaparece — a velocidade já é <b>proporcional ao erro</b>, logo desacelera sozinha</td></tr>
+  <tr><td><code>Stop_Lin</code> + histerese <code>DIST_NEWPOSE</code></td><td><b>zona morta</b> abaixo de <code>TOL_FINDIST</code></td></tr>
+</table>
+<p>Repara no que se perde: a histerese. Na FSM, o par <code>TOL_FINDIST</code>/<code>DIST_NEWPOSE</code>
+impedia o robô de voltar a arrancar por ruído de odometria. Aqui, qualquer erro acima da zona morta
+faz o robô mexer-se outra vez. Em troca ganhas um controlador de dez linhas, sem estados para depurar.</p>
+<p><b>Cuidado com o ganho.</b> O <code>Control</code> corre a cada 40 ms. Com <code>K_LIN·dt</code>
+perto de 1, o robô salta por cima do alvo em cada ciclo e entra em oscilação. Os valores do
+esqueleto (<code>K_LIN = 5</code>, <code>K_ANG = 3</code>) dão <code>K·dt = 0.2</code> e
+<code>0.12</code> — bem dentro do seguro.</p>
+<p>Não precisas do <code>rotateToFinal</code>: o <b>sinal</b> de <code>error_finalrot</code> já diz
+para que lado rodar, e é o <code>NormalizeAngle</code> que garante o caminho mais curto.</p>`),
+
+      /* ------------------------------------------------ 10. entrega */
       {
         type: "labtask",
         kind: "code",

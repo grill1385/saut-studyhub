@@ -925,5 +925,126 @@ end;`,
     rules: [{re: /dist2arc/, msg: "Usa o <code>Dist2Arc</code> para o ponto mais próximo do arco.", level: "warn"}, {re: /2\s*\*\s*pi/, msg: "Quando <code>beta &lt; alfa</code> tens de somar <code>2*pi</code> — senão o erro de arco fica negativo e o robô pára logo.", level: "error"}, {re: /pi\s*\/\s*2/, msg: "A tangente ao círculo está a <code>+pi/2</code> do raio.", level: "error"}],
     signalHints: {"G.state_lin": "O <code>error_dist</code> tem de ser o comprimento de <b>arco</b> que falta: <code>(beta - alfa)*R</code>, com <code>beta := beta + 2*pi</code> se <code>beta &lt; alfa</code>.", "RC.V": "A direção de avanço é a <b>tangente</b>: depois de calcular <code>alfa := ATan2(yOdo-yc, xOdo-xc)</code>, faz <code>alfa := alfa + pi/2</code> antes de usar em cos/sin. O resto é igual ao FollowLine.", "trajetória": "Se o robô sai do círculo, o termo corretor <code>(nearX - xOdo)</code> está em falta ou com ganho errado.", "pose final": "Verifica o teste <code>if beta &lt; alfa then beta := beta + 2*pi</code> — é o que garante que percorre o arco no sentido direto."},
     hints: ["O erro linear já não é uma distância em linha reta: é o arco que falta percorrer, <code>(beta-alfa)*R</code>.", "<code>alfa</code> é o ângulo do robô visto do centro; <code>beta</code> é o ângulo do ponto final. Ambos com <code>ATan2</code> em torno de (xc, yc).", "Para andar sobre o círculo a direção de avanço é a tangente — soma <code>pi/2</code> ao ângulo radial.", "A estrutura de saídas é copiada do FollowLine: <code>VlinX := VEL_LIN_NOM*cos(alfa) + k*(nearX - xOdo)</code> e depois rodas para o referencial do robô."]
+  },
+  "gotoxycont": {
+    id: "gotoxycont",
+    title: "<code>GotoXY</code> cont\u00ednuo \u2014 sem m\u00e1quina de estados",
+    entry: "gotoxycont",
+    signature: "procedure gotoXYCont(xf, yf, tf: double; var RC: TRobotControls);",
+    starter: `procedure gotoXYCont(xf, yf, tf: double; var RC: TRobotControls);
+const
+  K_LIN = 5;    // ganho proporcional linear
+  K_ANG = 3;    // ganho proporcional angular
+var
+  ang_target, error_dist, error_finalrot, vel, V, Vn, W: double;
+begin
+  // 1) erros (iguais aos do gotoXY com FSM)
+  ang_target     := ;
+  error_dist     := ;
+  error_finalrot := ;
+
+  // 2) lei linear: velocidade proporcional ao erro, SATURADA em VEL_LIN_NOM
+  //    e anulada dentro de TOL_FINDIST (zona morta = o antigo estado Stop_Lin)
+  vel := ;
+
+  // 3) decompoe no referencial do robo (nao ha fase de rotacao: e omni)
+  V  := ;
+  Vn := ;
+
+  // 4) lei angular: proporcional a error_finalrot, saturada em +/-VEL_ANG_NOM
+  //    e anulada dentro de TOL_FINTHETA
+  W := ;
+
+  MotorVel(V, Vn, W, RC);
+end;`,
+    prelude: `const
+  Ce    = 360;
+  ngear = 1;
+  Dnom  = 0.0980;
+  L1nom = 0.1600;
+  L2nom = 0.3000;
+  Go_Forward   = 1;
+  De_Accel_Lin = 2;
+  Stop_Lin     = 3;
+  Rotation     = 1;
+  De_Accel_Rot = 2;
+  Stop_Rot     = 3;
+  RotateRight  = 1;
+  RotateLeft   = -1;
+  VEL_ANG_NOM   = 0.5;
+  VEL_LIN_NOM   = 1;
+  VEL_LIN_DA    = 0.2;
+  DIST_DA       = 0.2;
+  TOL_FINDIST   = 0.02;
+  DIST_NEWPOSE  = 0.05;
+  THETA_NEWPOSE = 15 * 3.1415/180.0;
+  THETA_DA      = 15 * 3.1415/180.0;
+  W_DA          = 0.01;
+  TOL_FINTHETA  = 1 * 3.1415/180.0;
+var
+  xodo, yodo, thodo: double;
+  state_Lin, state_Rot: integer;
+
+procedure MotorVel(V,Vn,W: double; var RC: TRobotControls);
+var Vmax, VnMax, Wmax: double;
+begin
+  // Maximum velocities
+  Vmax  := GetRCValue(14,6);
+  VnMax := GetRCValue(15,6);
+  Wmax  := GetRCValue(16,6);
+
+   // Inverse Kinematics - positive rotation is clockwise for 1 and 3 wheels!!!
+  RC.V[0] := V*Vmax - Vn*VnMax - (L1nom + L2nom)*W*Wmax/2;
+  RC.V[1] := V*Vmax + Vn*VnMax + (L1nom + L2nom)*W*Wmax/2;
+  RC.V[2] := V*Vmax + Vn*VnMax - (L1nom + L2nom)*W*Wmax/2;
+  RC.V[3] := V*Vmax - Vn*VnMax + (L1nom + L2nom)*W*Wmax/2;
+end;`,
+    solution: `// Tarefa 4 do enunciado â GotoXY SEM mÃ¡quina de estados.
+// ATENÃÃO: esta rotina NÃO vem da soluÃ§Ã£o do professor. Ã uma implementaÃ§Ã£o
+// de referÃªncia escrita para o StudyHub, para permitir avaliaÃ§Ã£o automÃ¡tica.
+// Passar neste avaliador nÃ£o garante equivalÃªncia com o que o professor espera.
+procedure gotoXYCont(xf, yf, tf: double; var RC: TRobotControls);
+const
+  K_LIN = 5;    // ganho proporcional linear  [1/s]
+  K_ANG = 3;    // ganho proporcional angular [1/s]
+var
+  ang_target, error_dist, error_finalrot, vel, V, Vn, W: double;
+begin
+  //Calc errors
+  ang_target     := ATan2(yf - yOdo, xf - xOdo);
+  error_dist     := Sqrt(sqr(xf - xOdo) + sqr(yf - yOdo));
+  error_finalrot := NormalizeAngle(tf - thOdo);
+
+  //Lei proporcional linear com saturacao e zona morta
+  vel := K_LIN * error_dist;
+  if vel > VEL_LIN_NOM then vel := VEL_LIN_NOM;
+  if error_dist < TOL_FINDIST then vel := 0;
+
+  //Decomposicao no referencial do robo
+  V  := vel * cos(ang_target - thOdo);
+  Vn := vel * sin(ang_target - thOdo);
+
+  //Lei proporcional angular com saturacao e zona morta
+  W := K_ANG * error_finalrot;
+  if W >  VEL_ANG_NOM then W :=  VEL_ANG_NOM;
+  if W < -VEL_ANG_NOM then W := -VEL_ANG_NOM;
+  if abs(error_finalrot) < TOL_FINTHETA then W := 0;
+
+  MotorVel(V, Vn, W, RC);
+
+  // --------------------------------------------------
+  // DEBUG
+  SetRCValue(14,4,format('%.4g',[V]));
+  SetRCValue(15,4,format('%.4g',[Vn]));
+  SetRCValue(16,4,format('%.4g',[W]));
+  SetRCValue(4,15,format('%.4g',[error_dist]));
+end;`,
+    globals: ["xodo", "yodo", "thodo", "state_lin", "state_rot"],
+    sheet0: {"14,6": 1, "15,6": 1, "16,6": 1},
+    tol: 1e-6,
+    tests: [{"name": "Longe do alvo (velocidade saturada)", "G": {"xodo": 0, "yodo": 0, "thodo": 0}, "args": [1.0, 0.5, 0.3, "$RC"]}, {"name": "Longe do alvo, robô rodado", "G": {"xodo": -0.4, "yodo": 0.9, "thodo": 2.0}, "args": [1.0, 0.5, -1.2, "$RC"]}, {"name": "Zona linear (erro < VEL_LIN_NOM/K_LIN)", "G": {"xodo": 0.9, "yodo": 0.5, "thodo": 0.25}, "args": [1.0, 0.5, 0.3, "$RC"]}, {"name": "Dentro da zona morta linear (tem de parar)", "G": {"xodo": 0.995, "yodo": 0.5, "thodo": 0.3}, "args": [1.0, 0.5, 0.3, "$RC"]}, {"name": "Dentro da zona morta angular (W tem de ser 0)", "G": {"xodo": 0.5, "yodo": 0.5, "thodo": 0.3}, "args": [1.0, 0.5, 0.305, "$RC"]}, {"name": "Erro angular grande (W saturado no sentido curto)", "G": {"xodo": 0, "yodo": 0, "thodo": 3.0}, "args": [0.05, 0.0, -3.0, "$RC"]}, {"name": "Sem histerese: a 3.5 cm tem de continuar a andar", "G": {"xodo": 0.965, "yodo": 0.5, "thodo": 0.3}, "args": [1.0, 0.5, 0.3, "$RC"]}, {"name": "Velocidades máximas diferentes (não podes fixar valores)", "G": {"xodo": 0, "yodo": 0, "thodo": 0}, "sheet": {"14,6": 2.0, "15,6": 1.5, "16,6": 3.0}, "args": [1.0, 0.5, 0.3, "$RC"]}, {"name": "Malha fechada: converge para (1.0, 0.5, 0.5)?", "steps": 400, "dt": 0.04, "sample": 50, "start": [0, 0, 0], "args": [1.0, 0.5, 0.5, "$RC"], "tolSim": 0.03}, {"name": "Malha fechada: alvo atrás do robô", "steps": 400, "dt": 0.04, "sample": 50, "start": [0.5, 0.5, 1.5], "args": [-0.5, -0.2, -0.8, "$RC"], "tolSim": 0.03}],
+    rules: [{re: /atan2/, msg: "O ângulo para o alvo continua a ser <code>ATan2(yf-yodo, xf-xodo)</code>.", level: "error"}, {re: /normalizeangle/, msg: "O erro angular tem de passar por <code>NormalizeAngle</code>.", level: "error"}, {re: /motorvel/, msg: "No fim tens de chamar <code>MotorVel(V, Vn, W, RC)</code>.", level: "error"}, {re: /case/, msg: "Esta tarefa é <b>sem máquina de estados</b>: não deve haver nenhum <code>case</code> nem escrita em <code>state_Lin</code>/<code>state_Rot</code>.", level: "error", must: false}, {re: /tol_findist/, msg: "A paragem deixa de ser um estado e passa a ser uma <b>zona morta</b>: <code>if error_dist &lt; TOL_FINDIST then vel := 0</code>.", level: "warn"}, {re: /vel_lin_nom/, msg: "A saturação usa <code>VEL_LIN_NOM</code> como tecto — sem ela o robô arranca acima do máximo quando está longe.", level: "warn"}],
+    signalHints: {"RC.V": "As rodas estão erradas. A lei é <code>vel := K_LIN*error_dist</code>, cortada em <code>VEL_LIN_NOM</code> e anulada abaixo de <code>TOL_FINDIST</code>; depois <code>V := vel*cos(ang_target - thOdo)</code> e <code>Vn := vel*sin(ang_target - thOdo)</code>. O <code>W</code> é <code>K_ANG*error_finalrot</code> saturado em ±<code>VEL_ANG_NOM</code>.", "trajetória": "Converge mal ou oscila. Se oscila, o ganho está a mandar o robô saltar por cima do alvo em cada ciclo: com dt=40 ms, <code>K_LIN*dt</code> tem de ficar bem abaixo de 1. Se nunca chega, falta-te a zona morta.", "pose final": "O robô não estabiliza. Ao contrário da FSM, aqui não há histerese: a paragem vem só das zonas mortas <code>TOL_FINDIST</code> e <code>TOL_FINTHETA</code>."},
+    hints: ["Os três erros são exatamente os mesmos do <code>gotoXY</code> com FSM. O que muda é só o que fazes com eles.", "Substitui os estados por duas ideias: <b>saturação</b> (o tecto de velocidade, que faz o papel de Go_Forward) e <b>zona morta</b> (que faz o papel de Stop). A desaceleração deixa de ser um estado — é automática, porque a velocidade é proporcional ao erro.", "Linear: <code>vel := K_LIN*error_dist; if vel &gt; VEL_LIN_NOM then vel := VEL_LIN_NOM; if error_dist &lt; TOL_FINDIST then vel := 0;</code> e depois decompõe com <code>cos/sin(ang_target - thOdo)</code>.", "Angular: <code>W := K_ANG*error_finalrot;</code> saturado nos dois sentidos em ±<code>VEL_ANG_NOM</code>, e <code>W := 0</code> se <code>abs(error_finalrot) &lt; TOL_FINTHETA</code>. Não precisas do <code>rotateToFinal</code>: o sinal do erro já dá o sentido."]
   }
 };

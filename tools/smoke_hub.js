@@ -36,7 +36,7 @@ const lab = m3.modules.find(x => x.id === "m3-mod6");
 ok(!!lab, "módulo m3-mod6 presente");
 ok(lab.title.indexOf("código avaliado") > 0, "título substituído pela versão nova");
 const evals = lab.pages.filter(p => p.kind === "codeeval");
-ok(evals.length === 7, "7 sub-tarefas de código avaliado (obtidas: " + evals.length + ")");
+ok(evals.length === 8, "8 sub-tarefas de código avaliado (obtidas: " + evals.length + ")");
 const spec = w.SAUT_LABSPEC["m3-mod6"];
 ok(!!spec, "spec da labwork carregada");
 evals.forEach(p => ok(!!spec[p.task], "spec existe para a tarefa '" + p.task + "'"));

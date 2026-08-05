@@ -342,7 +342,7 @@ window.SAUT_CONTENT["m3"] = { modules: [
     solution:"Leis contínuas em paralelo: <code>vel = min(V_NOM, K·erro_dist)</code> decomposta em V/Vn com cos/sin(ang), e <code>W = sat(Kw·(θf−θr))</code>. Sem estados porque não há fases obrigatórias — só saturações e zonas de desaceleração implícitas.<br><br>🏁 <b>Labwork 3 concluída!</b> O M3 fica completo e desbloqueia o <b>M4 — EKF beacons</b>, o milestone com mais peso no exame. Reserva-lhe o máximo de tempo!" },
   { type:"labtask", kind:"code",
     title:"💾 Guarda o teu código da Lab 3",
-    context:"<p>Cola o teu <code>gotoXy</code> omni (2 máquinas de estados), <code>FollowLine</code>, <code>FollowCircle</code> e a versão sem FSM. Fica guardado neste milestone — consultável em <b>M3 → 📄 O teu código guardado</b>.</p>",
+    context:"<p>Cola o teu <code>gotoXy</code> omni (2 máquinas de estados), <code>FollowLine</code>, <code>FollowCircle</code> e o <code>gotoXYCont</code> (sem FSM). Fica guardado neste milestone — consultável em <b>M3 → 📄 O teu código guardado</b>.</p>",
     q:"Snippet da Lab 3 (Pascal/SimTwo omni):" }
 
 ]}

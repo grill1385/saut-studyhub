@@ -476,6 +476,88 @@ end;""",
     ],
 ))
 
+# --------------------------------------------------- 8. GotoXY contínuo sem FSM
+# NOTA: a solução de referência desta tarefa NÃO é do professor — foi escrita
+# para o StudyHub (tools/lab3_solution/sol_gotoXYCont.pas). Ver aviso na tarefa.
+TASKS.append(dict(
+    id="gotoxycont",
+    title="<code>GotoXY</code> contínuo — sem máquina de estados",
+    entry="gotoxycont",
+    prelude=CONSTS + "\n" + MOTORVEL,
+    solution=pas("gotoXYCont"),
+    globals=GLOBALS,
+    sheet0=SHEET_MAX,
+    signature="procedure gotoXYCont(xf, yf, tf: double; var RC: TRobotControls);",
+    starter="""procedure gotoXYCont(xf, yf, tf: double; var RC: TRobotControls);
+const
+  K_LIN = 5;    // ganho proporcional linear
+  K_ANG = 3;    // ganho proporcional angular
+var
+  ang_target, error_dist, error_finalrot, vel, V, Vn, W: double;
+begin
+  // 1) erros (iguais aos do gotoXY com FSM)
+  ang_target     := ;
+  error_dist     := ;
+  error_finalrot := ;
+
+  // 2) lei linear: velocidade proporcional ao erro, SATURADA em VEL_LIN_NOM
+  //    e anulada dentro de TOL_FINDIST (zona morta = o antigo estado Stop_Lin)
+  vel := ;
+
+  // 3) decompoe no referencial do robo (nao ha fase de rotacao: e omni)
+  V  := ;
+  Vn := ;
+
+  // 4) lei angular: proporcional a error_finalrot, saturada em +/-VEL_ANG_NOM
+  //    e anulada dentro de TOL_FINTHETA
+  W := ;
+
+  MotorVel(V, Vn, W, RC);
+end;""",
+    tests=[
+        dict(name="Longe do alvo (velocidade saturada)", G=dict(xodo=0, yodo=0, thodo=0),
+             args=[1.0, 0.5, 0.3, "$RC"]),
+        dict(name="Longe do alvo, robô rodado", G=dict(xodo=-0.4, yodo=0.9, thodo=2.0),
+             args=[1.0, 0.5, -1.2, "$RC"]),
+        dict(name="Zona linear (erro < VEL_LIN_NOM/K_LIN)", G=dict(xodo=0.9, yodo=0.5, thodo=0.25),
+             args=[1.0, 0.5, 0.3, "$RC"]),
+        dict(name="Dentro da zona morta linear (tem de parar)", G=dict(xodo=0.995, yodo=0.5, thodo=0.3),
+             args=[1.0, 0.5, 0.3, "$RC"]),
+        dict(name="Dentro da zona morta angular (W tem de ser 0)", G=dict(xodo=0.5, yodo=0.5, thodo=0.3),
+             args=[1.0, 0.5, 0.305, "$RC"]),
+        dict(name="Erro angular grande (W saturado no sentido curto)", G=dict(xodo=0, yodo=0, thodo=3.0),
+             args=[0.05, 0.0, -3.0, "$RC"]),
+        dict(name="Sem histerese: a 3.5 cm tem de continuar a andar", G=dict(xodo=0.965, yodo=0.5, thodo=0.3),
+             args=[1.0, 0.5, 0.3, "$RC"]),
+        dict(name="Velocidades máximas diferentes (não podes fixar valores)",
+             G=dict(xodo=0, yodo=0, thodo=0), sheet={"14,6": 2.0, "15,6": 1.5, "16,6": 3.0},
+             args=[1.0, 0.5, 0.3, "$RC"]),
+        dict(name="Malha fechada: converge para (1.0, 0.5, 0.5)?", steps=400, dt=0.04, sample=50,
+             start=[0, 0, 0], args=[1.0, 0.5, 0.5, "$RC"], tolSim=0.03),
+        dict(name="Malha fechada: alvo atrás do robô", steps=400, dt=0.04, sample=50,
+             start=[0.5, 0.5, 1.5], args=[-0.5, -0.2, -0.8, "$RC"], tolSim=0.03),
+    ],
+    rules=[
+        dict(level="error", re=r"atan2", msg="O ângulo para o alvo continua a ser <code>ATan2(yf-yodo, xf-xodo)</code>."),
+        dict(level="error", re=r"normalizeangle", msg="O erro angular tem de passar por <code>NormalizeAngle</code>."),
+        dict(level="error", re=r"motorvel", msg="No fim tens de chamar <code>MotorVel(V, Vn, W, RC)</code>."),
+        dict(level="error", re=r"case", must=False, msg="Esta tarefa é <b>sem máquina de estados</b>: não deve haver nenhum <code>case</code> nem escrita em <code>state_Lin</code>/<code>state_Rot</code>."),
+        dict(re=r"tol_findist", msg="A paragem deixa de ser um estado e passa a ser uma <b>zona morta</b>: <code>if error_dist &lt; TOL_FINDIST then vel := 0</code>."),
+        dict(re=r"vel_lin_nom", msg="A saturação usa <code>VEL_LIN_NOM</code> como tecto — sem ela o robô arranca acima do máximo quando está longe."),
+    ],
+    signalHints={
+        "RC.V": "As rodas estão erradas. A lei é <code>vel := K_LIN*error_dist</code>, cortada em <code>VEL_LIN_NOM</code> e anulada abaixo de <code>TOL_FINDIST</code>; depois <code>V := vel*cos(ang_target - thOdo)</code> e <code>Vn := vel*sin(ang_target - thOdo)</code>. O <code>W</code> é <code>K_ANG*error_finalrot</code> saturado em ±<code>VEL_ANG_NOM</code>.",
+        "trajetória": "Converge mal ou oscila. Se oscila, o ganho está a mandar o robô saltar por cima do alvo em cada ciclo: com dt=40 ms, <code>K_LIN*dt</code> tem de ficar bem abaixo de 1. Se nunca chega, falta-te a zona morta.",
+        "pose final": "O robô não estabiliza. Ao contrário da FSM, aqui não há histerese: a paragem vem só das zonas mortas <code>TOL_FINDIST</code> e <code>TOL_FINTHETA</code>.",
+    },
+    hints=[
+        "Os três erros são exatamente os mesmos do <code>gotoXY</code> com FSM. O que muda é só o que fazes com eles.",
+        "Substitui os estados por duas ideias: <b>saturação</b> (o tecto de velocidade, que faz o papel de Go_Forward) e <b>zona morta</b> (que faz o papel de Stop). A desaceleração deixa de ser um estado — é automática, porque a velocidade é proporcional ao erro.",
+        "Linear: <code>vel := K_LIN*error_dist; if vel &gt; VEL_LIN_NOM then vel := VEL_LIN_NOM; if error_dist &lt; TOL_FINDIST then vel := 0;</code> e depois decompõe com <code>cos/sin(ang_target - thOdo)</code>.",
+        "Angular: <code>W := K_ANG*error_finalrot;</code> saturado nos dois sentidos em ±<code>VEL_ANG_NOM</code>, e <code>W := 0</code> se <code>abs(error_finalrot) &lt; TOL_FINTHETA</code>. Não precisas do <code>rotateToFinal</code>: o sinal do erro já dá o sentido.",
+    ],
+))
+
 # ----------------------------------------------------------------- serialização
 def dump_task(t):
     parts = []
@@ -493,9 +575,10 @@ def dump_task(t):
     parts.append("    tol: 1e-6,")
     parts.append("    tests: %s," % json.dumps(t["tests"], ensure_ascii=False))
     parts.append("    rules: [%s]," % ", ".join(
-        "{re: /%s/, msg: %s, level: %s}" % (r["re"].replace("/", "\\/"),
-                                             json.dumps(r["msg"], ensure_ascii=False),
-                                             json.dumps(r.get("level", "warn")))
+        "{re: /%s/, msg: %s, level: %s%s}" % (r["re"].replace("/", "\\/"),
+                                              json.dumps(r["msg"], ensure_ascii=False),
+                                              json.dumps(r.get("level", "warn")),
+                                              ", must: false" if r.get("must") is False else "")
         for r in t.get("rules", [])))
     parts.append("    signalHints: %s," % json.dumps(t.get("signalHints", {}), ensure_ascii=False))
     parts.append("    hints: %s" % json.dumps(t.get("hints", []), ensure_ascii=False))
