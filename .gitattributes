@@ -1,0 +1,8 @@
+# Normalização de finais de linha — evita diffs falsos entre Windows e o resto
+* text=auto eol=lf
+
+# Binários
+*.png binary
+*.jpg binary
+*.pdf binary
+*.zip binary

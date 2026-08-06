@@ -15,3 +15,6 @@ desktop.ini
 # Segredos (nunca commitar)
 *.token
 .env
+
+# Node (só para os testes em tools/)
+node_modules/
