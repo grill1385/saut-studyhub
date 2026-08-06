@@ -21,6 +21,7 @@ index.html            Página única (SPA por hash routing)
 css/style.css         Estilos
 js/app.js             Lógica da aplicação (router, quizzes, progresso, grafo)
 js/pascal.js          Transpilador Pascal (subconjunto SimTwo) -> JavaScript
+js/matlab.js          Interpretador de MATLAB com álgebra matricial
 js/grader.js          Avaliador híbrido de código (estrutural + execução)
 js/data/meta.js       Metadados dos milestones
 js/data/topics.js     Índice de tópicos
@@ -28,6 +29,9 @@ js/data/graph.js      Grafo de conhecimento
 js/data/m0..m7.js     Conteúdo de cada milestone
 js/data/lab3spec.js   Testes/solução de referência da Labwork 3 (gerado)
 js/data/m3lab.js      Labwork 3 com sub-tarefas de código avaliadas
+js/data/lab4spec.js   Testes/solução de referência da Labwork 4 (gerado)
+js/data/m4lab.js      Labwork 4 com sub-tarefas de código avaliadas
+tools/                Geradores das specs e testes (não fazem parte da app)
 assets/slides/        Slides das aulas teóricas (PNG por capítulo)
 PLANO_IMPLEMENTACAO.md  Plano de desenvolvimento e estado do conteúdo
 ```
@@ -39,11 +43,17 @@ Para transferir entre PCs usar `⚙ Definições → Exportar progresso` / `Impo
 
 ## Labworks com código avaliado
 
-A partir da Labwork 3 (M3, último módulo) escreves as rotinas em Pascal e carregas em
-**▶ Avaliar código**. O hub transpila o teu código, corre-o em casos unitários, de histerese e
-de malha fechada, e compara os **sinais produzidos** com os da solução oficial do professor.
-Não tens de escrever igual: `if/else` em vez de `case`, outros nomes, outra formulação — desde
-que o comportamento seja o mesmo, passa. A solução do professor desbloqueia ao fim de 3 tentativas.
+Nas Labworks **3** (M3, último módulo — Pascal do SimTwo) e **4** (M4, último módulo — MATLAB)
+escreves tu o código e carregas em **▶ Avaliar código**. O hub executa o teu código e o da
+solução oficial do professor nos mesmos dados e compara os **valores produzidos**: velocidades
+das rodas e estados das máquinas na Lab 3, matrizes e estimativas do EKF na Lab 4.
+
+Não tens de escrever igual ao professor: `if/else` em vez de `case`, `diag()` em vez de escrever
+a matriz à mão, `while` em vez de `for`, outros nomes de variáveis — desde que o comportamento
+seja o mesmo, passa. Há ainda testes de **desempenho** (o robô converge? o filtro converge?) para
+as tarefas que não têm resposta única, como a sintonia de P e Q.
+
+A solução do professor desbloqueia ao fim de 3 tentativas.
 
 ## Notas
 

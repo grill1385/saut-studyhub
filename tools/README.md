@@ -24,3 +24,22 @@ em todas as tarefas.
 npm install jsdom      # uma vez
 node tools/smoke_hub.js
 ```
+
+## `gen_lab4spec.py`
+Regenera `js/data/lab4spec.js` a partir dos `.m` da solução do professor em `lab4_solution/`
+(cópia de `SAUTO/Lab_4/`). O gerador **verifica** que cada fragmento de referência existe mesmo
+nesses ficheiros (ignorando comentários e espaços) e aborta se não existir.
+
+```bash
+python3 tools/gen_lab4spec.py
+node --check js/data/lab4spec.js
+```
+
+## `test_graders.js`
+Testes de semântica do avaliador, sem jsdom. Verifica que (1) a solução do professor passa,
+(2) implementações equivalentes escritas de outra forma passam, (3) os erros clássicos falham e
+recebem a dica certa.
+
+```bash
+node tools/test_graders.js
+```

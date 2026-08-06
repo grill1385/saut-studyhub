@@ -11,6 +11,7 @@
   "use strict";
 
   var P = global.SAUT_PASCAL;
+  var ML = global.SAUT_MATLAB;
 
   /* ---------------- utilitários ---------------- */
   function stripComments(src) {
@@ -140,6 +141,105 @@
     return { kind: "sim", traj: traj, final: [st.x, st.y, st.th] };
   }
 
+  /* ================================================================
+     Runner MATLAB — o utilizador escreve um FRAGMENTO que é inserido
+     no marcador %%USER%% do harness da tarefa. Depois de correr,
+     lêem-se as variáveis de task.capture do workspace.
+     ================================================================ */
+  function harnessPrefixLines(task) {
+    var i = task.harness.indexOf("%%USER%%");
+    return i < 0 ? 0 : task.harness.slice(0, i).split("\n").length - 1;
+  }
+
+  function runMatlab(task, src, tc) {
+    var code = task.harness.replace("%%USER%%", src);
+    var ws = new ML.Workspace({ seed: task.seed || 20260806, maxSteps: task.maxSteps || 4000000 });
+    var set = Object.assign({}, task.set0 || {}, tc.set || {});
+    for (var k in set) ws.set(k, ML.fromJS(set[k]));
+    ML.run(code, { ws: ws });
+    var cap = {};
+    (task.capture || []).forEach(function (n) {
+      var v = ws.get(n);
+      cap[n] = v === undefined ? undefined : ML.toJS(v);
+    });
+    return { kind: "vars", cap: cap, ws: ws };
+  }
+
+  function compareVars(task, tc, got, exp) {
+    var tol = tc.tol !== undefined ? tc.tol : (task.tol !== undefined ? task.tol : 1e-8);
+    var tolPct = tc.tolPct !== undefined ? tc.tolPct : task.tolPct;
+    var names = task.capture || [];
+    for (var i = 0; i < names.length; i++) {
+      var n = names[i];
+      if (exp.cap[n] === undefined) continue;
+      if (got.cap[n] === undefined) {
+        return { ok: false, signal: n, got: "(não definida)", exp: fmt(exp.cap[n]) };
+      }
+      var a = got.cap[n], b = exp.cap[n];
+      if (Array.isArray(a) !== Array.isArray(b) ||
+          (Array.isArray(a) && Array.isArray(b) && (a.length !== b.length ||
+           (Array.isArray(a[0]) && a[0].length !== b[0].length)))) {
+        return { ok: false, signal: n, got: dimOf(a), exp: dimOf(b) };
+      }
+      if (!close(a, b, tol, tolPct)) return { ok: false, signal: n, got: fmt(a), exp: fmt(b) };
+    }
+    return { ok: true };
+  }
+
+  function dimOf(v) {
+    if (!Array.isArray(v)) return "escalar";
+    if (!Array.isArray(v[0])) return "1x" + v.length;
+    return v.length + "x" + v[0].length;
+  }
+
+  function gradeMatlab(task, userSrc, out) {
+    if (!ML) { out.phase = "interno"; out.error = "Falta carregar js/matlab.js."; return out; }
+    /* sintaxe */
+    try {
+      ML.parse(task.harness.replace("%%USER%%", userSrc));
+    } catch (e) {
+      out.phase = "sintaxe";
+      var ln = Math.max(1, (e.line || 0) - harnessPrefixLines(task));
+      out.error = "Erro de sintaxe na linha " + ln + " do teu código — " + (e.message || e);
+      return out;
+    }
+    out.phase = "execução";
+    var cases = task.tests || [];
+    out.total = cases.length;
+    for (var i = 0; i < cases.length; i++) {
+      var tc = cases[i], res = { name: tc.name || ("Caso " + (i + 1)), ok: false };
+      var gotR;
+      try { gotR = runMatlab(task, userSrc, tc); }
+      catch (e1) {
+        res.detail = "o teu código rebentou em execução: " +
+          (e1 && e1.name === "MlError"
+            ? ("linha " + Math.max(1, (e1.line || 0) - harnessPrefixLines(task)) + " — " + e1.message)
+            : (e1.message || e1));
+        out.tests.push(res); continue;
+      }
+      if (tc.kind === "assert") {
+        var verdict;
+        try { verdict = tc.check(gotR.cap, gotR.ws); }
+        catch (e2) { verdict = "erro ao avaliar o critério: " + e2; }
+        if (verdict === true) { res.ok = true; out.passed++; }
+        else { res.detail = typeof verdict === "string" ? verdict : (tc.why || "critério não satisfeito"); res.signal = tc.signal || ""; }
+        out.tests.push(res); continue;
+      }
+      var expR;
+      try { expR = runMatlab(task, task.solution, tc); }
+      catch (e3) { res.ok = true; res.skipped = true; res.detail = "caso ignorado (erro na referência)"; out.tests.push(res); out.passed++; continue; }
+      var cmp = compareVars(task, tc, gotR, expR);
+      if (cmp.ok) { res.ok = true; out.passed++; }
+      else {
+        res.signal = cmp.signal;
+        res.detail = "variável <b>" + cmp.signal + "</b> — obtido <code>" + cmp.got + "</code>, esperado <code>" + cmp.exp + "</code>";
+      }
+      out.tests.push(res);
+    }
+    out.ok = out.total > 0 && out.passed === out.total;
+    return out;
+  }
+
   /* ---------------- comparação ---------------- */
   function compare(task, tc, got, exp) {
     var tol = tc.tol !== undefined ? tc.tol : (task.tol !== undefined ? task.tol : 1e-6);
@@ -196,6 +296,8 @@
       return out;
     }
     out.rules = checkRules(task, userSrc);
+
+    if ((task.lang || "pascal") === "matlab") return gradeMatlab(task, userSrc, out);
 
     /* --- compilação --- */
     var bu, be;

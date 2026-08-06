@@ -125,9 +125,14 @@ Perguntas do exame modelo (mapa no docx, Tabela 10) devem aparecer como exercíc
 - [x] M5 conteúdo completo (6 módulos, cobertura integral do deck Loc_Validation 16/16 págs + Labwork 5 guiada 8 sub-tarefas; P4/P6 do exame; topics.js e graph.js atualizados — nó 'val' desbloqueável)
 - [x] v5 (sessão 4): motor de **avaliação automática de código** (`js/pascal.js`, `js/grader.js`)
   e **Labwork 3 reformulada** (`js/data/lab3spec.js` + `js/data/m3lab.js`, que substitui o
-  m3-mod6 em runtime — `m3.js` não foi tocado). Ver secção 12. Testes: `tools/smoke_hub.js`
-  (jsdom, UI + oráculo) e `tools/gen_lab3spec.py` (regenera a spec).
-- [ ] Labs 4/5/6 avaliáveis — ver tabela 12.4 (começar pela Lab 5)
+  m3-mod6 em runtime — `m3.js` não foi tocado). Ver secção 12.
+  Testes: `tools/smoke_hub.js` (jsdom: carregamento, todas as vistas, fluxo de UI, oráculo) e
+  `tools/test_graders.js` (semântica: oráculo + equivalentes passam, erros clássicos falham).
+  Geradores das specs: `tools/gen_lab3spec.py` e `tools/gen_lab4spec.py`.
+- [x] v6 (sessão 5): camada **MATLAB** (`js/matlab.js`) + grader estendido (harness `%%USER%%`,
+  testes `assert`) + **Labwork 4 reformulada** (`js/data/lab4spec.js` + `js/data/m4lab.js`,
+  substitui m4-mod7 em runtime; `m4.js` não foi tocado). 10 sub-tarefas. Ver secções 12.4/12.5.
+- [ ] Labs 5/6 avaliáveis — ver tabela 12.5 (começar pela Lab 5)
 - [ ] M6 conteúdo (stub) — PRÓXIMO PASSO: decks SAUT_Prob_Localization (23 págs) + SAUT_Loc_Map_Matching (27 págs); sem lab dedicada → módulo final = mini-teste estilo M0. Perguntas exame: MCL/kidnap, rejeição outliers (já introduzida no m5-mod2!), map matching P14, landmarks lineares. Atualizar topics.js (mcl, mapm) e graph.js (nós mcl, mapm).
 - [ ] M7 conteúdo (stub) — decks SLAM (38), MultiRobot (12), Drone (8) + Labs 6/7 (checklist guiado). Atualizar topics.js (slam, mrob) e graph.js (slam, mrob).
 
@@ -189,12 +194,43 @@ reescritas equivalentes com `if/else`/`sign()`/outra matemática (passam), e err
 Os casos de teste incluem cenários desenhados de propósito para distinguir
 `TOL_FINDIST` de `DIST_NEWPOSE` e `TOL_FINTHETA` de `THETA_NEWPOSE`.
 
-### 12.4 Como replicar para as Labs 4, 5 e 6
+### 12.4 Camada MATLAB (v6, Lab 4)
+
+**`js/matlab.js`** — mini-interpretador de MATLAB (não é transpilador: avalia a AST
+diretamente, porque a álgebra matricial obrigava a um runtime próprio de qualquer forma).
+Classe `Mat` (row-major, mas indexação MATLAB column-major), operadores
+`+ - * / \ ^ .* ./ .^ '`, indexação `A(i)`, `A(i,j)`, `A(:,j)`, `end`, atribuição indexada
+com auto-crescimento, `if/for/while/break`, funções locais, multi-retorno `[a,b]=f(...)`.
+Builtins incluem `inv`, `pinv`, `det`, `diag`, `eye`, `norm`, `mean`, `NormalizeAng`,
+`randn`/`rand` **com semente fixa** (execuções reprodutíveis) e um `ode45` (RK4 de passo fixo,
+8 subpassos) com `robot_5dpo` já registado. Comandos sem parênteses (`clear all`, `hold on`)
+e chamadas gráficas (`plot`, `legend`, …) são no-op.
+API: `SAUT_MATLAB.run(src, {ws, vars, seed})`, `fromJS`, `toJS`, `fmt`.
+
+**Modelo de tarefa MATLAB** (diferente do Pascal — não há "entry", há um *harness*):
+```js
+{ lang:"matlab",
+  harness: "…código MATLAB com o marcador %%USER%%…",
+  solution: "…fragmento do professor…",
+  capture: ["grad_f_X", "P", …],     // variáveis lidas do workspace e comparadas
+  tests: [ {name, set:{v:1.2, dt:0.04, …}},                    // comparação com o oráculo
+           {kind:"assert", name, check:function(cap){…}} ] }   // critério, sem oráculo
+```
+O `set` injeta variáveis no workspace **antes** do harness correr, portanto funciona mesmo
+quando o fragmento do utilizador está no meio de um ciclo. Os testes `assert` servem para
+tarefas sem resposta única (sintonia de P/Q: corre-se o filtro 300 iterações e exige-se
+convergência), e estão disponíveis para as duas linguagens.
+
+Spec: `js/data/lab4spec.js`, gerada por `tools/gen_lab4spec.py`. O gerador **verifica que cada
+fragmento de referência existe mesmo** nos `.m` do professor (comparação sem comentários nem
+espaços) antes de escrever — se alguém mexer nas soluções, o gerador falha em vez de gerar
+silenciosamente um oráculo errado.
+
+### 12.5 Como replicar para as Labs 5 e 6
 | Lab | Solução disponível | O que falta construir |
 |-----|--------------------|-----------------------|
-| 4 | `Lab_4/ekf_1p_1p_solution_V2_tested.m`, `ekf_4p_solution.m` | transpilador **MATLAB** (subconjunto: matrizes, `*`, `'`, `inv`, `eye`, indexação, `if/for`) + `lab4spec.js` |
-| 5 | `Lab_5/SimTwo64_LabWork__5_EKF.zip → EKF_Beacon_Laser_Sol/NXTControl.spas` | reutiliza `pascal.js`; falta runtime de **matrizes** (`MMult`, `Mtran`, `Minv`, `Madd`, `Msub`, `Meye`, `RangeToMatrix`, `MatrixToRange`) + `lab5spec.js` |
-| 6 | `Lab_6/SAUT_ESP_-_stud.zip` (parcial), `picoRobotSAUT.zip` | transpilador **C++** ou avaliação só estrutural; solução incompleta |
+| 5 | `Lab_5/SimTwo64_LabWork__5_EKF.zip → EKF_Beacon_Laser_Sol/NXTControl.spas` | reutiliza `pascal.js`; falta ligar as funções de **matrizes** do SimTwo (`MMult`, `Mtran`, `Minv`, `Madd`, `Msub`, `Meye`, `RangeToMatrix`, `MatrixToRange`) ao runtime — a classe `Mat` do `js/matlab.js` já serve de base — + `lab5spec.js` |
+| 6 | `Lab_6/SAUT_ESP_-_stud.zip` (parcial), `picoRobotSAUT.zip` | interpretador **C++** ou avaliação só estrutural; a solução do professor está incompleta |
 
-Ordem recomendada: **Lab 5** (só precisa da biblioteca de matrizes sobre o transpilador que já
-existe) → **Lab 4** → **Lab 6**.
+Próximo passo recomendado: **Lab 5** — é o mais barato, porque o Pascal já está feito e a
+álgebra matricial já existe; só falta expor as funções `M*` do SimTwo no runtime do `pascal.js`.

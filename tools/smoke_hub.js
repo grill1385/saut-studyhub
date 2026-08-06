@@ -1,4 +1,10 @@
-/* Smoke test do hub com jsdom: renderiza a Labwork 3 e exercita o avaliador na UI. */
+/* Smoke test do hub com jsdom.
+   Cobre: carregamento de todos os scripts, renderização de todas as vistas,
+   o fluxo de avaliação de código na UI (Pascal e MATLAB), e o "oráculo"
+   (a solução do professor tem de passar em todas as tarefas das labworks).
+
+   Uso:  npm install jsdom   &&   node tools/smoke_hub.js
+*/
 const { JSDOM } = require("jsdom");
 const fs = require("fs");
 const path = require("path");
@@ -9,81 +15,98 @@ const dom = new JSDOM(html, { runScripts: "outside-only", url: "file:///hub/inde
 const w = dom.window;
 w.confirm = () => true;
 
-/* localStorage simples */
 const store = {};
 Object.defineProperty(w, "localStorage", {
-  value: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; }, clear: () => { for (const k in store) delete store[k]; } },
+  value: {
+    getItem: k => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: k => { delete store[k]; },
+    clear: () => { for (const k in store) delete store[k]; }
+  },
   configurable: true
 });
 
-const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
 let fails = 0;
-function ok(cond, msg) { console.log((cond ? "  ✔ " : "  ✘ ") + msg); if (!cond) fails++; }
+const ok = (c, m) => { console.log((c ? "  ✔ " : "  ✘ ") + m); if (!c) fails++; };
+const section = t => console.log("\n" + t);
 
-console.log("Scripts carregados pelo index.html:");
+/* ------------------------------------------------ carregamento */
+section("Scripts do index.html");
+const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
 for (const s of scripts) {
   const p = path.join(ROOT, s);
   if (!fs.existsSync(p)) { console.log("  ✘ EM FALTA: " + s); fails++; continue; }
   try { w.eval(fs.readFileSync(p, "utf8")); }
   catch (e) { console.log("  ✘ ERRO em " + s + ": " + e.message); fails++; }
 }
-console.log("  (" + scripts.length + " ficheiros)\n");
+ok(true, scripts.length + " ficheiros carregados");
 
-console.log("Estrutura de dados:");
-const m3 = w.SAUT_CONTENT["m3"];
-ok(!!m3, "m3 existe");
-const lab = m3.modules.find(x => x.id === "m3-mod6");
-ok(!!lab, "módulo m3-mod6 presente");
-ok(lab.title.indexOf("código avaliado") > 0, "título substituído pela versão nova");
-const evals = lab.pages.filter(p => p.kind === "codeeval");
-ok(evals.length === 8, "8 sub-tarefas de código avaliado (obtidas: " + evals.length + ")");
-const spec = w.SAUT_LABSPEC["m3-mod6"];
-ok(!!spec, "spec da labwork carregada");
-evals.forEach(p => ok(!!spec[p.task], "spec existe para a tarefa '" + p.task + "'"));
-ok(m3.modules.length === 6, "m3 mantém os 6 módulos (obtidos: " + m3.modules.length + ")");
-console.log("");
-
-console.log("Renderização da vista de módulo:");
-w.location.hash = "#/m3/mod/m3-mod6";
-w.dispatchEvent(new w.Event("hashchange"));
-const app = w.document.querySelector("#app");
-ok(app.innerHTML.length > 500, "página renderizada (" + app.innerHTML.length + " chars)");
-ok(/Labwork 3/.test(app.innerHTML), "título da labwork visível");
-
-/* navegar até à sub-tarefa MotorVel (página 1) */
-const dots = app.querySelectorAll(".pdot");
-ok(dots.length === lab.pages.length, "indicadores de página = " + lab.pages.length);
-dots[1].dispatchEvent(new w.Event("click"));
-let ta = w.document.querySelector("textarea.code-eval");
-ok(!!ta, "textarea de código presente na sub-tarefa MotorVel");
-ok(/Avaliar código/.test(w.document.querySelector("#app").innerHTML), "botão de avaliação presente");
-ok(!/Ver solução do professor/.test(w.document.querySelector("#app").innerHTML), "solução ainda bloqueada (0 tentativas)");
-console.log("");
-
-console.log("Avaliação através da UI:");
-function clickEval() {
-  const btn = w.document.querySelector(".q-eval");
-  btn.onclick();
-  return new Promise(r => setTimeout(r, 60));
+/* ------------------------------------------------ estrutura */
+section("Estrutura das labworks avaliadas");
+const LABS = [
+  { ms: "m3", mod: "m3-mod6" },
+  { ms: "m4", mod: "m4-mod7" }
+];
+for (const L of LABS) {
+  const mods = (w.SAUT_CONTENT[L.ms] || { modules: [] }).modules;
+  const mod = mods.find(x => x.id === L.mod);
+  ok(!!mod, L.mod + " presente");
+  if (!mod) continue;
+  const evals = mod.pages.filter(p => p.kind === "codeeval");
+  const spec = w.SAUT_LABSPEC[L.mod] || {};
+  ok(!!w.SAUT_LABSPEC[L.mod], "spec de " + L.mod + " carregada");
+  ok(evals.length > 0, `${L.mod}: ${evals.length} sub-tarefas de código avaliado`);
+  /* consistência nos dois sentidos: nenhuma página sem spec, nenhuma spec órfã */
+  evals.forEach(p => ok(!!spec[p.task], `  página → spec: '${p.task}'`));
+  const used = evals.map(p => p.task);
+  Object.keys(spec).forEach(id => ok(used.indexOf(id) >= 0, `  spec → página: '${id}' está a ser usada`));
 }
+
+/* ------------------------------------------------ vistas */
+section("Renderização de todas as vistas");
+store["saut_progress_v1"] = JSON.stringify({ activeMilestone: "m0", freeMode: true, milestones: {} });
+const views = ["#/", "#/stats", "#/graph"];
+w.SAUT_META.forEach(m => {
+  views.push("#/" + m.id);
+  ((w.SAUT_CONTENT[m.id] || { modules: [] }).modules).forEach(mo => views.push("#/" + m.id + "/mod/" + mo.id));
+});
+let bad = 0;
+views.forEach(v => {
+  try {
+    w.location.hash = v;
+    w.dispatchEvent(new w.Event("hashchange"));
+    if (w.document.querySelector("#app").innerHTML.length < 200) { console.log("  ✘ vista vazia: " + v); bad++; }
+  } catch (e) { console.log("  ✘ ERRO em " + v + ": " + e.message); bad++; }
+});
+ok(bad === 0, views.length + " vistas renderizam sem erro");
+
+/* ------------------------------------------------ fluxo na UI */
+const app = () => w.document.querySelector("#app").innerHTML;
+const wait = () => new Promise(r => setTimeout(r, 80));
+async function submit(txt) {
+  w.document.querySelector("textarea.code-eval").value = txt;
+  w.document.querySelector(".q-eval").onclick();
+  await wait();
+}
+function goto(hash, dot) {
+  w.location.hash = hash;
+  w.dispatchEvent(new w.Event("hashchange"));
+  w.document.querySelectorAll(".pdot")[dot].dispatchEvent(new w.Event("click"));
+}
+
+section("Fluxo de avaliação na UI (Labwork 3 — Pascal, MotorVel)");
+goto("#/m3/mod/m3-mod6", 1);
+ok(!!w.document.querySelector("textarea.code-eval"), "editor de código presente");
+ok(!/Ver solução do professor/.test(app()), "solução bloqueada com 0 tentativas");
+
 (async () => {
-  /* 1) código errado */
-  ta = w.document.querySelector("textarea.code-eval");
-  ta.value = "procedure MotorVel(V, Vn, W: double; var RC: TRobotControls);\nbegin\n  RC.V[0] := V;\n  RC.V[1] := V;\n  RC.V[2] := V;\n  RC.V[3] := V;\nend;";
-  await clickEval();
-  let body = w.document.querySelector("#app").innerHTML;
-  ok(/testes\.<\/b>|de \d+ testes/.test(body), "relatório de testes apresentado");
-  ok(/✘/.test(body), "código errado reprovado");
-  ok(/💡/.test(body), "dica mostrada após falhar");
-
-  /* 2) mais duas tentativas -> desbloqueia solução */
-  await clickEval(); await clickEval();
-  body = w.document.querySelector("#app").innerHTML;
-  ok(/Ver solução do professor/.test(body), "solução desbloqueada após 3 tentativas");
-
-  /* 3) solução equivalente (escrita de outra forma) deve passar */
-  ta = w.document.querySelector("textarea.code-eval");
-  ta.value = `procedure MotorVel(V, Vn, W: double; var RC: TRobotControls);
+  await submit("procedure MotorVel(V, Vn, W: double; var RC: TRobotControls);\nbegin\n  RC.V[0] := V;\n  RC.V[1] := V;\n  RC.V[2] := V;\n  RC.V[3] := V;\nend;");
+  ok(/✘/.test(app()), "código errado reprovado com relatório");
+  ok(/💡/.test(app()), "dica apresentada");
+  await submit("procedure MotorVel(V, Vn, W: double; var RC: TRobotControls);\nbegin\n  RC.V[0] := V;\nend;");
+  await submit("procedure MotorVel(V, Vn, W: double; var RC: TRobotControls);\nbegin\n  RC.V[0] := V;\nend;");
+  ok(/Ver solução do professor/.test(app()), "solução desbloqueia às 3 tentativas");
+  await submit(`procedure MotorVel(V, Vn, W: double; var RC: TRobotControls);
 var a, b, c: double;
 begin
   a := V  * GetRCValue(14,6);
@@ -93,24 +116,31 @@ begin
   RC.V[1] := a + b + c;
   RC.V[2] := a + b - c;
   RC.V[3] := a - b + c;
-end;`;
-  await clickEval();
-  body = w.document.querySelector("#app").innerHTML;
-  ok(/Passou nos \d+ testes/.test(body), "solução equivalente aprovada");
-
-  /* 4) persistência */
+end;`);
+  ok(/Passou nos \d+ testes/.test(app()), "implementação equivalente aprovada");
   const st = JSON.parse(store["saut_progress_v1"]);
-  const q = st.milestones.m3.modules["m3-mod6"].quiz["p1q0"];
-  ok(q && q.ok === true, "progresso guardado (ok=true)");
-  ok(q.tries === 4, "contador de tentativas correto (" + q.tries + ")");
+  ok(st.milestones.m3.modules["m3-mod6"].quiz["p1q0"].ok === true, "progresso persistido");
   ok(!!st.milestones.m3.codeTasks.motorvel, "código do utilizador persistido");
 
-  /* 5) todas as tarefas: a solução do professor tem de passar pela UI/grader */
-  console.log("\nOráculo — solução do professor em cada tarefa:");
-  Object.keys(spec).forEach(id => {
-    const r = w.SAUT_GRADER.grade(spec[id], spec[id].solution);
-    ok(r.ok, id + " → " + r.passed + "/" + r.total + " testes");
-  });
+  section("Fluxo de avaliação na UI (Labwork 4 — MATLAB, modelo de movimento)");
+  goto("#/m4/mod/m4-mod7", 1);
+  ok(!!w.document.querySelector("textarea.code-eval"), "editor de código MATLAB presente");
+  await submit("xr_e = xr_e + v*dt*cos(theta_r_e);\nyr_e = yr_e + v*dt*sin(theta_r_e);\ntheta_r_e = theta_r_e + omega*dt;");
+  ok(/✘/.test(app()), "fragmento MATLAB errado reprovado");
+  await submit(`a = theta_r_e + omega*dt/2;
+xr_e = xr_e + v*dt*cos(a);
+yr_e = yr_e + v*dt*sin(a);
+theta_r_e = NormalizeAng(theta_r_e + omega*dt);`);
+  ok(/Passou nos \d+ testes/.test(app()), "fragmento MATLAB equivalente aprovado");
+
+  section("Oráculo — a solução do professor passa em todas as tarefas");
+  for (const L of LABS) {
+    const spec = w.SAUT_LABSPEC[L.mod];
+    Object.keys(spec).forEach(id => {
+      const r = w.SAUT_GRADER.grade(spec[id], spec[id].solution);
+      ok(r.ok, `${L.mod}/${id} → ${r.passed}/${r.total}`);
+    });
+  }
 
   console.log("\n" + (fails ? "### " + fails + " VERIFICAÇÕES FALHADAS ###" : ">>> TODAS AS VERIFICAÇÕES PASSARAM"));
   process.exit(fails ? 1 : 0);
