@@ -10,12 +10,14 @@ const path = require("path");
 const fs = require("fs");
 const ROOT = path.join(__dirname, "..");
 global.window = global;
-["js/pascal.js", "js/matlab.js", "js/grader.js", "js/data/lab3spec.js", "js/data/lab4spec.js"]
+["js/pascal.js", "js/matlab.js", "js/grader.js",
+ "js/data/lab3spec.js", "js/data/lab4spec.js", "js/data/lab5spec.js"]
   .forEach(f => eval(fs.readFileSync(path.join(ROOT, f), "utf8")));
 
 const G = global.SAUT_GRADER;
 const L3 = global.SAUT_LABSPEC["m3-mod6"];
 const L4 = global.SAUT_LABSPEC["m4-mod7"];
+const L5 = global.SAUT_LABSPEC["m5-mod6"];
 let fails = 0;
 
 function strip(s) { return String(s).replace(/<[^>]+>/g, ""); }
@@ -39,7 +41,7 @@ function check(bank, id, src, expectOk, label) {
 
 /* ================= 1. ORÁCULO ================= */
 console.log("\n1) Oráculo — a solução do professor passa");
-[[L3, "Lab 3"], [L4, "Lab 4"]].forEach(([bank, nome]) => {
+[[L3, "Lab 3"], [L4, "Lab 4"], [L5, "Lab 5"]].forEach(([bank, nome]) => {
   Object.keys(bank).forEach(id => check(bank, id, bank[id].solution, true, nome + " oráculo"));
 });
 
@@ -208,6 +210,151 @@ for j = 1:4
   P = (eye(3) - k*H)*P;
   x_e = x_e + k*(zs(:,j) - z_e);
 end`, false, "inovação não normalizada dentro do ciclo");
+
+/* ================= 3b. LAB 5 ================= */
+console.log("\n3b) Lab 5 — equivalentes e erros");
+
+check(L5, "predict", `
+procedure predictPosition(odo1, odo2: double);
+var dEsq, dDir, d, dth: double;
+begin
+  dEsq := odo1 * ToMetres;
+  dDir := odo2 * ToMetres;
+  d   := (dEsq + dDir) / 2;
+  dth := (dDir - dEsq) / WheelDist;
+  x := x + d*cos(theta + dth/2);
+  y := y + d*sin(theta + dth/2);
+  theta := NormalizeAngle(theta + dth);
+end;`, true, "odometria com as rodas separadas");
+
+check(L5, "laser2world", `
+procedure LaserPointToWorld(MeasureDist: double; i: integer; var px, py: double);
+var ang, lx, ly: double;
+begin
+  ang := (i-NBEAMS2)*pi()/NBEAMS2 + theta;
+  lx := x - 0.14*cos(theta);
+  ly := y - 0.14*sin(theta);
+  px := lx + MeasureDist*cos(ang);
+  py := ly + MeasureDist*sin(ang);
+end;`, true, "laser->mundo com a origem do laser em variáveis");
+
+check(L5, "clustermeasure", `
+procedure ClusterMeasure(j: integer);
+var dx, dy: double;
+begin
+  dx := BeaconCluster[j].x - x;
+  dy := BeaconCluster[j].y - y;
+  BeaconCluster[j].dist := sqrt(dx*dx + dy*dy);
+  BeaconCluster[j].ang := NormalizeAngle(ATan2(dy, dx) - theta);
+end;`, true, "cluster->medida sem usar Dist()");
+
+check(L5, "associate", `
+procedure AssociateBeacons;
+var i, j: integer;
+    md, px, py: double;
+    sx, sy: array[1..3] of double;
+begin
+  for j:=1 to NBEACONS do begin
+    sx[j] := 0; sy[j] := 0;
+    BeaconCluster[j].n := 0;
+    BeaconCluster[j].x := 0;
+    BeaconCluster[j].y := 0;
+  end;
+  i := firstRay;
+  while i <= LastRay do begin
+    md := Mgetv(LaserValues, i, 0) + 0.02;
+    if md > 0 then begin
+      px := md*cos((i-NBEAMS2)*pi()/NBEAMS2 + theta) + x - 0.14*cos(theta);
+      py := md*sin((i-NBEAMS2)*pi()/NBEAMS2 + theta) + y - 0.14*sin(theta);
+      for j:=1 to NBEACONS do begin
+        if Dist(BeaconPos[j].x - px, BeaconPos[j].y - py) < 0.1 then begin
+          BeaconCluster[j].n := BeaconCluster[j].n + 1;
+          sx[j] := sx[j] + px;
+          sy[j] := sy[j] + py;
+        end;
+      end;
+    end;
+    i := i + 1;
+  end;
+  for j:=1 to NBEACONS do begin
+    if BeaconCluster[j].n > 0 then begin
+      BeaconCluster[j].x := sx[j]/BeaconCluster[j].n;
+      BeaconCluster[j].y := sy[j]/BeaconCluster[j].n;
+    end;
+  end;
+end;`, true, "associação com soma total em vez de média incremental");
+
+check(L5, "motionmodel", `
+procedure EKF_MotionModel;
+var a: double;
+begin
+  SetRCValue(33,1, format('%.4g', [x]));
+  SetRCValue(34,1, format('%.4g', [y]));
+  SetRCValue(35,1, format('%.4g', [theta]));
+  XR := RangeToMatrix(33,1, 3,1);
+  a := theta + 0.5*omega*dt;
+  grad_f_X := Meye(3);
+  Msetv(grad_f_X, 0, 2, -vlin*dt*sin(a));
+  Msetv(grad_f_X, 1, 2,  vlin*dt*cos(a));
+  grad_f_q := Mzeros(3,2);
+  Msetv(grad_f_q, 0, 0, cos(a));
+  Msetv(grad_f_q, 1, 0, sin(a));
+  Msetv(grad_f_q, 0, 1, -0.5*vlin*dt*sin(a));
+  Msetv(grad_f_q, 1, 1,  0.5*vlin*dt*cos(a));
+  Msetv(grad_f_q, 2, 1, 1);
+  P := Madd(MMult(MMult(grad_f_X, P), Mtran(grad_f_X)),
+            MMult(grad_f_q, MMult(Q, Mtran(grad_f_q))));
+  MatrixToRange(33, 5, P);
+end;`, true, "predição com matrizes em memória (sem passar pela folha)");
+
+check(L5, "tuning", `
+procedure SetupNoise;
+begin
+  Q := Mzeros(2,2);
+  Msetv(Q,0,0,0.0004);
+  Msetv(Q,1,1,0.0004);
+  R := Mzeros(2,2);
+  Msetv(R,0,0,0.00005);
+  Msetv(R,1,1,0.0001);
+end;`, true, "sintonia diferente da do professor mas válida");
+
+/* --- erros --- */
+check(L5, "predict", L5.predict.solution.replace("NormalizeAngle(theta+delta_theta)", "(theta+delta_theta)"),
+      false, "odometria sem NormalizeAngle");
+check(L5, "predict", L5.predict.solution.replace("(odo1+odo2)/2.0", "(odo1+odo2)"),
+      false, "avanço sem a média das rodas");
+check(L5, "laser2world", `
+procedure LaserPointToWorld(MeasureDist: double; i: integer; var px, py: double);
+begin
+  px := MeasureDist*cos((i-NBEAMS2)*pi()/NBEAMS2 + theta) + x;
+  py := MeasureDist*sin((i-NBEAMS2)*pi()/NBEAMS2 + theta) + y;
+end;`, false, "laser->mundo sem o desvio de 0.14 m");
+check(L5, "clustermeasure", `
+procedure ClusterMeasure(j: integer);
+begin
+  BeaconCluster[j].dist := Dist(BeaconCluster[j].x - x, BeaconCluster[j].y - y);
+  BeaconCluster[j].ang := NormalizeAngle(ATan2(BeaconCluster[j].y - y, BeaconCluster[j].x - x));
+end;`, false, "ângulo do cluster sem subtrair theta");
+check(L5, "associate", L5.associate.solution.replace("Mgetv(LaserValues, i, 0)+0.02", "Mgetv(LaserValues, i, 0)"),
+      false, "associação sem compensar o raio do poste");
+check(L5, "motionmodel", L5.motionmodel.solution.replace("MMult(P, Mtran(grad_f_X))", "MMult(P, grad_f_X)"),
+      false, "predição com uma transposição em falta");
+check(L5, "update", L5.update.solution.replace(
+        "NormalizeAngle(BeaconCluster[nBeacon].ang - NormalizeAngle(Atan2(BeaconPos[nBeacon].y-y, BeaconPos[nBeacon].x-x) - theta))",
+        "BeaconCluster[nBeacon].ang - (Atan2(BeaconPos[nBeacon].y-y, BeaconPos[nBeacon].x-x) - theta)"),
+      false, "inovação angular sem normalizar");
+check(L5, "tuning", `
+procedure SetupNoise;
+begin
+  Q := Mzeros(2,2); Msetv(Q,0,0,Power(lin_stddev,2)); Msetv(Q,1,1,Power(omega_stddev,2));
+  R := Mzeros(2,2); Msetv(R,0,0,100); Msetv(R,1,1,100);
+end;`, false, "R enorme — o filtro ignora as medidas");
+check(L5, "tuning", `
+procedure SetupNoise;
+begin
+  Q := Mzeros(2,2); Msetv(Q,0,0,lin_stddev); Msetv(Q,1,1,omega_stddev);
+  R := Mzeros(2,2); Msetv(R,0,0,sensD_stddev); Msetv(R,1,1,sensA_stddev);
+end;`, false, "desvios padrão em vez de variâncias");
 
 /* ================= 4. SINTAXE ================= */
 console.log("\n4) Erros de sintaxe e assinatura");

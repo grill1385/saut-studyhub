@@ -45,7 +45,8 @@ ok(true, scripts.length + " ficheiros carregados");
 section("Estrutura das labworks avaliadas");
 const LABS = [
   { ms: "m3", mod: "m3-mod6" },
-  { ms: "m4", mod: "m4-mod7" }
+  { ms: "m4", mod: "m4-mod7" },
+  { ms: "m5", mod: "m5-mod6" }
 ];
 for (const L of LABS) {
   const mods = (w.SAUT_CONTENT[L.ms] || { modules: [] }).modules;
@@ -132,6 +133,32 @@ xr_e = xr_e + v*dt*cos(a);
 yr_e = yr_e + v*dt*sin(a);
 theta_r_e = NormalizeAng(theta_r_e + omega*dt);`);
   ok(/Passou nos \d+ testes/.test(app()), "fragmento MATLAB equivalente aprovado");
+
+  section("Fluxo de avaliação na UI (Labwork 5 — Pascal/SimTwo, odometria diferencial)");
+  goto("#/m5/mod/m5-mod6", 1);
+  ok(!!w.document.querySelector("textarea.code-eval"), "editor de código presente");
+  await submit(`procedure predictPosition(odo1, odo2: double);
+var d, delta_theta: double;
+begin
+  d := (odo1+odo2) * ToMetres;
+  delta_theta := (odo2-odo1)* ToMetres/WheelDist;
+  x := x + d*cos(theta);
+  y := y + d*sin(theta);
+  theta := theta + delta_theta;
+end;`);
+  ok(/✘/.test(app()), "odometria errada reprovada");
+  await submit(`procedure predictPosition(odo1, odo2: double);
+var dEsq, dDir, d, dth: double;
+begin
+  dEsq := odo1 * ToMetres;
+  dDir := odo2 * ToMetres;
+  d   := (dEsq + dDir) / 2;
+  dth := (dDir - dEsq) / WheelDist;
+  x := x + d*cos(theta + dth/2);
+  y := y + d*sin(theta + dth/2);
+  theta := NormalizeAngle(theta + dth);
+end;`);
+  ok(/Passou nos \d+ testes/.test(app()), "odometria equivalente aprovada");
 
   section("Oráculo — a solução do professor passa em todas as tarefas");
   for (const L of LABS) {

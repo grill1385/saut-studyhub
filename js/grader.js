@@ -50,7 +50,17 @@
     return a === b;
   }
 
+  function isMatV(x) {
+    return x && typeof x === "object" && typeof x.r === "number" && typeof x.c === "number" && x.d;
+  }
+  function matToJS(m) {
+    if (m.r === 1 && m.c === 1) return m.d[0];
+    var out = [];
+    for (var i = 0; i < m.r; i++) { var row = []; for (var j = 0; j < m.c; j++) row.push(m.d[i * m.c + j]); out.push(row); }
+    return out;
+  }
   function deepCopy(o) {
+    if (isMatV(o)) return matToJS(o);
     if (Array.isArray(o)) return o.map(deepCopy);
     if (o && typeof o === "object") { var r = {}; for (var k in o) r[k] = deepCopy(o[k]); return r; }
     return o;
@@ -74,9 +84,21 @@
     return b;
   }
 
+  /* cópia para ENTRADAS: {__mat:[[...]]} é convertido numa Matrix do SimTwo */
+  function deepCopyIn(o) {
+    if (o && typeof o === "object" && o.__mat) return P.matFromRows(o.__mat);
+    if (Array.isArray(o)) return o.map(deepCopyIn);
+    if (o && typeof o === "object") { var r = {}; for (var k in o) r[k] = deepCopyIn(o[k]); return r; }
+    return o;
+  }
+
   function applyCase(b, task, tc) {
     var g = Object.assign({}, task.G0 || {}, tc.G || {});
-    for (var k in g) b.G[k] = deepCopy(g[k]);
+    for (var k in g) b.G[k] = deepCopyIn(g[k]);
+    if (tc.laser) {
+      b.env.laser = P.matFromRows(tc.laser);
+      b.G.laservalues = P.matFromRows(tc.laser);
+    }
     var sh = Object.assign({}, task.sheet0 || {}, tc.sheet || {});
     for (var c in sh) b.env.sheet[c] = sh[c];
     if (tc.odo) b.env.odo = tc.odo.slice();
@@ -227,7 +249,13 @@
       }
       var expR;
       try { expR = runMatlab(task, task.solution, tc); }
-      catch (e3) { res.ok = true; res.skipped = true; res.detail = "caso ignorado (erro na referência)"; out.tests.push(res); out.passed++; continue; }
+      catch (e3) {
+        out.phase = "interno";
+        out.error = "A solução de referência falhou no caso \"" + res.name + "\": " + (e3.message || e3) +
+          ". Isto é um defeito da especificação da labwork, não do teu código.";
+        out.ok = false;
+        return out;
+      }
       var cmp = compareVars(task, tc, gotR, expR);
       if (cmp.ok) { res.ok = true; out.passed++; }
       else {
@@ -334,12 +362,33 @@
     for (var i = 0; i < cases.length; i++) {
       var tc = cases[i], res = { name: tc.name || ("Caso " + (i + 1)), ok: false };
       var gotR, expR;
+      if (tc.kind === "assert") {
+        var capP;
+        try {
+          runCase(bu, task, tc);
+          capP = {};
+          (task.watch || []).concat(task.captureG || []).forEach(function (n) { capP[n] = deepCopy(bu.G[n]); });
+        } catch (ea) {
+          res.detail = "o teu código rebentou em execução: " +
+            (ea && ea.name === "PasError" ? ea.toString() : (ea.message || ea));
+          out.tests.push(res); continue;
+        }
+        var verdictP;
+        try { verdictP = tc.check(capP, bu); }
+        catch (eb) { verdictP = "erro ao avaliar o critério: " + eb; }
+        if (verdictP === true) { res.ok = true; out.passed++; }
+        else res.detail = typeof verdictP === "string" ? verdictP : (tc.why || "critério não satisfeito");
+        out.tests.push(res); continue;
+      }
       try {
         expR = runCase(be, task, tc);
       } catch (e0) {
-        res.ok = true; res.skipped = true; res.detail = "caso ignorado (erro na referência)";
-        out.tests.push(res); out.passed++;
-        continue;
+        out.phase = "interno";
+        out.error = "A solução de referência falhou no caso \"" + res.name + "\": " +
+          (e0 && e0.name === "PasError" ? e0.toString() : (e0.message || e0)) +
+          ". Isto é um defeito da especificação da labwork, não do teu código.";
+        out.ok = false;
+        return out;
       }
       try {
         gotR = runCase(bu, task, tc);

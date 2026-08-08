@@ -43,3 +43,13 @@ recebem a dica certa.
 ```bash
 node tools/test_graders.js
 ```
+
+## `gen_lab5spec.py`
+Regenera `js/data/lab5spec.js` a partir de `lab5_solution/NXTControl.spas` (cópia de
+`SAUTO/Lab_5/SimTwo64_LabWork__5_EKF.zip → EKF_Beacon_Laser_Sol/`). Verifica a proveniência de
+cada fragmento e simula os varrimentos do laser usados nos testes de associação.
+
+```bash
+python3 tools/gen_lab5spec.py
+node --check js/data/lab5spec.js
+```

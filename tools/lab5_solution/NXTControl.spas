@@ -1,0 +1,990 @@
+//Robot information
+const
+    ToMetres = 0.0007277;
+    WheelDist = 0.198;
+    NBEACONS = 3;
+    NBEAMS2 = 180; // number of laser beams diveded by 2
+    dt = 0.04;
+
+    //Tuning velocities parameters
+    VEL_ANG_NOM = 0.2;  //0.15
+    VEL_LIN_NOM = 5;  //10   //approx 20cm/s   * 40ms  = 8mm/cycle
+    LinDeAccel = 2.5; //2
+    MAX_ETF = 10 * 3.1415/180.0;
+    HIST_ETF = 5 * 3.1415/180.0;
+    GAIN_FWD = 0.02; //0.05
+    DIST_DA = 0.2;
+    GAIN_DA = 0.0005;
+    TOL_FINDIST = 0.02;
+    DIST_NEWPOSE = 0.5;
+    THETA_NEWPOSE = 15 * 3.1415/180.0;
+    THETA_DA = 15 * 3.1415/180.0;
+    W_DA = 0.01; //    W_DA = 0.0025;
+    TOL_FINTHETA = 1 * 3.1415/180.0;
+    DIST_NEWLINE = 0.2;
+    DIST_NEARLINE = 0.05;
+    DVMAX = 5;
+    DWMAX = 0.05;
+
+    //State Machine states
+    //GoToXY
+    Rotation = 0;
+    Go_Forward = 1;
+    De_Accel = 2;
+    Final_Rot = 3;
+    DeAccel_Final_Rot = 4;
+    Stop = 5;
+
+    //FollowLine
+    Follow_Line = 0;
+    Approaching = 1;
+    Final_Rot_FL = 2;
+    Stop_FL = 3;
+    Goto_NearXY = 4;
+
+    //FollowSquare
+    Line_1 = 1;
+    Line_4 = 4;
+
+    //Used to find fastest rotation
+    RotateRight = 1;
+    RotateLeft = -1;
+
+    //Kalman Filter
+    //Tuning
+    lin_stddev = 1E-2; //0.001;
+    omega_stddev = 1E-2; //0.001;
+    sensD_stddev = 0.005;
+    sensA_stddev = 0.009; // (1grau * pi/180)/2
+
+
+// Types
+type
+  TPos = record
+    x: double;
+    y: double;
+  end;
+
+  TClusterPos = record
+    x: double;
+    y: double;
+    dist: double;
+    ang: double;
+    n: integer;
+  end;
+
+// Global Variables
+var irobot, iLaser, firstRay, lastRay, imp1, imp2, state, stateLine, stateSquare: integer;
+    vlin, omega, vlin_prev, omega_prev, t, w, theta, x, y, distLine, testSideLine, nearX, nearY, error_dist_prev: double;
+    lines: TStrings;
+    UDP: TStream;
+    ControlMode: string;
+    stateStrings: array [0..2] of array of string;
+    //kalman filter
+    XR, P, Q, R, grad_f_X, grad_f_q, grad_h_x: Matrix;
+    LaserValues: Matrix;
+    BeaconPos: array [1..NBEACONS] of TPos;
+    BeaconCluster: array [1..NBEACONS] of TClusterPos;
+    Log: TStringList;
+    ChartOn,LogOn: boolean;
+
+function LaserModel(Robot, Laser:Integer; a1, a2, a3, b1, b2 : double): Matrix;
+var
+  D, N, sigma, Dl : double;
+  Laser_scan, Ds : Matrix;
+  i : integer;
+begin
+  Laser_scan := GetSensorValues(Robot, Laser);
+
+  Ds := Mzeros(MNumRows(Laser_scan),
+               MNumCols(Laser_scan));
+
+  for i:= 0 to MNumRows(Laser_scan)-1 do begin
+    D := Mgetv(Laser_scan,i,0);
+    Dl := a1 * D * D + a2 * D + a3;
+    sigma := b1 * power(2.71828182846, b2 * D);
+    //N := RandG(0, sigma);
+    N := RandG(0,sensD_stddev);
+    Msetv(Ds, i, 0, Dl + N);
+  end;
+
+  Result := Ds;
+end;
+
+// Estimate position and angle from odometry
+procedure predictPosition(odo1, odo2: double);
+var d, delta_theta: double;
+begin
+
+  d := (odo1+odo2)/2.0 * ToMetres;
+  delta_theta := (odo2-odo1)* ToMetres/WheelDist;
+  x := x + d*cos(theta+delta_theta/2);
+  y := y + d*sin(theta+delta_theta/2);
+  theta := NormalizeAngle(theta+delta_theta);
+end;
+
+procedure EKF_MotionModel;
+begin
+  //Update XR
+  SetRCValue(33,1, format('%.4g', [x]));
+  SetRCValue(34,1, format('%.4g', [y]));
+  SetRCValue(35,1, format('%.4g', [theta]));
+  XR := RangeToMatrix(33,1, 3,1);
+
+  //Update df/dX
+  SetRCValue(42,3, format('%.4g', [-vlin*dt*sin(theta + 0.5*omega*dt)]));
+  SetRCValue(43,3, format('%.4g', [vlin*dt*cos(theta + 0.5*omega*dt)]));
+  grad_f_X := RangeToMatrix(42,1, 3,3);
+
+  //Update df/dq
+  SetRCValue(42,5, format('%.4g', [cos(theta + 0.5*omega*dt)]));
+  SetRCValue(42,6, format('%.4g', [-0.5*vlin*dt*sin(theta + 0.5*omega*dt)]));
+  SetRCValue(43,5, format('%.4g', [sin(theta + 0.5*omega*dt)]));
+  SetRCValue(43,6, format('%.4g', [0.5*vlin*dt*cos(theta + 0.5*omega*dt)]));
+  grad_f_q := RangeToMatrix(42,5, 3,2);
+
+  //Covariance propagation
+  P := MMult(grad_f_X, P);
+  P := MMult(P, Mtran(grad_f_X));
+  P := Madd(P, MMult(grad_f_q, MMult(Q, Mtran(grad_f_q))));
+  MatrixToRange(33, 5, P);
+end;
+
+// Extended Kalman Filter
+procedure EKF_Update(nBeacon: integer);
+var Z, Z_E, Kf: Matrix;
+    //sensD, sensTheta, obsAng, obsDist, dw, a, b, dOdD: double;
+    dBeacon: double;
+    txt: string;
+begin
+  //dh/dX
+  dBeacon := Dist(BeaconPos[nBeacon].x - x, BeaconPos[nBeacon].y - y);
+  SetRCValue(47,1, format('%.4g', [-(BeaconPos[nBeacon].x - x)/dBeacon]));
+  SetRCValue(48,1, format('%.4g', [(BeaconPos[nBeacon].y - y)/Power(dBeacon,2)]));
+  SetRCValue(47,2, format('%.4g', [-(BeaconPos[nBeacon].y - y)/dBeacon]));
+  SetRCValue(48,2, format('%.4g', [-(BeaconPos[nBeacon].x - x)/Power(dBeacon,2)]));
+  SetRCValue(47,3, format('%d', [0]));
+  SetRCValue(48,3, format('%d', [-1]));
+  grad_h_x := RangeToMatrix(47,1, 2,3);
+
+  //compute kalman gain
+  Kf := MMult(grad_h_X, P);
+  Kf := MMult(Kf, Mtran(grad_h_X));
+  Kf := Madd(Kf, R);
+  Kf := Minv(Kf);
+  Kf := MMult(Mtran(grad_h_X), Kf);
+  Kf := MMult(P, Kf);
+  MatrixToRange(51,5, Kf);
+
+  //covariance matrix update
+  P := MMult( Msub( Meye(3), MMult(Kf, grad_h_X) ), P );
+  MatrixToRange(33, 5, P);
+    
+  //update state variables
+  //Matrix Z (measures from sensor)
+  SetRCValue(51,1, format('%.4g', [BeaconCluster[nBeacon].dist]));
+  SetRCValue(52,1, format('%.4g', [BeaconCluster[nBeacon].ang]));
+  Z := RangeToMatrix(51,1, 2,1);
+    
+  //Matrix Z_E  (measures from sensor - expected measures)
+  SetRCValue(51,3, format('%.4g', [BeaconCluster[nBeacon].dist - dBeacon]));
+  SetRCValue(52,3, format('%.4g', [NormalizeAngle(BeaconCluster[nBeacon].ang - NormalizeAngle(Atan2(BeaconPos[nBeacon].y-y, BeaconPos[nBeacon].x-x) - theta))]));
+  Z_E := RangeToMatrix(51,3, 2,1);
+
+  //Matrix X
+  XR := Madd(XR, MMult (Kf, Z_E));
+  MatrixToRange(33,1, XR);
+
+  //Update X and Theta
+  x := GetRCValue(33,1);
+  y := GetRCValue(34,1);
+  theta := NormalizeAngle(GetRCValue(35,1));
+  SetRCValue(35,1, format('%.4g', [theta]));
+
+  if LogOn then begin
+    // x y theta enc1 enc2 Laser
+    txt := format('%d; %g; %g;  %g; %g; %g; %g; %g; %g; %g; %g', [nBeacon, dBeacon, NormalizeAngle(Atan2(BeaconPos[nBeacon].y-y, BeaconPos[nBeacon].x-x) - theta), BeaconCluster[nBeacon].dist, BeaconCluster[nBeacon].ang, x, y, theta, GetRobotX(0), GetRobotY(0), GetRobotTheta(0)]);
+    log.add(txt);
+  end;
+
+end;
+
+// Update position and angle from sensor readings
+procedure LocationFromSensors();
+var    str: string;
+       j: integer;
+begin
+  EKF_MotionModel;
+  for j:=1 to NBEACONS do begin
+    if BeaconCluster[j].n > 0 then EKF_Update(j);
+  end;
+end;
+
+//Sets new velocities for max acceleration defined by DVMAX and DWMAX
+procedure Accelerate();
+var new_vlin, new_omega : double;
+begin
+
+  //add velocity in distance per cycle
+  //if velocity goes over/under the desired velocity, set it to that value
+
+  if vlin_prev < vlin then begin
+    new_vlin := vlin_prev + DVMAX*dt;
+    if new_vlin > vlin then begin
+      new_vlin := vlin;
+    end;
+  end else if vlin_prev > vlin then begin
+    new_vlin := vlin_prev - DVMAX*dt;
+    if new_vlin < vlin then begin
+      new_vlin := vlin;
+    end;
+  end else begin
+    new_vlin := vlin;
+  end;
+
+  
+  if omega_prev < omega then begin
+    new_omega := omega_prev + DWMAX*dt;
+    if new_omega > omega then begin
+      new_omega := omega;
+    end;
+  end else if omega_prev > omega then begin
+    new_omega := omega_prev - DWMAX*dt;
+    if new_omega < omega then begin
+      new_omega := omega;
+    end;
+  end else begin
+    new_omega := omega;
+  end;
+    
+  //update previous velocities for next cycle
+  vlin_prev := new_vlin;
+  omega_prev := new_omega;
+end;
+
+
+//Compute differential velocities - robot specific
+procedure MotorVel();
+var v1, v2: double;
+begin
+
+  Accelerate();
+
+  //Use now updated vlin_prev and omega_prev
+  v1 := vlin_prev - omega_prev*(WheelDist/ToMetres)/2.0;
+  v2 := vlin_prev + omega_prev*(WheelDist/ToMetres)/2.0;
+  
+  SetAxisSpeedRef(irobot, 0, v1);
+  SetAxisSpeedRef(irobot, 1, v2);
+  SetRCValue(1,7,format('%.4g',[vlin_prev]));
+  SetRCValue(2,7,format('%.4g',[omega_prev]));
+  SetRCValue(1,8,format('%.4g',[v1]));
+  SetRCValue(2,8,format('%.4g',[v2]));
+end;
+
+
+//Developed function to get to a point
+procedure gotoXY(xf, yf, tf: double);
+var rotateTo, rotateToFinal, ang_target, error_dist, error_ang, error_finalrot: double;
+begin
+  // just to check if it's running
+  SetRCValue(11,3, format('%.2g', [t]));
+
+  //Calc errors
+  ang_target := ATan2(yf-y, xf-x);
+  error_ang := NormalizeAngle(ang_target-theta);
+  error_dist := Sqrt((xf-x)*(xf-x) + (yf-y)*(yf-y));
+  error_finalrot := NormalizeAngle(tf - theta);
+  SetRCValue(14,8, format('%.2g', [Deg(error_ang)]));
+
+
+  //Find fastest rotation
+  if error_ang > 0 then begin
+    rotateTo := RotateRight;
+  end else begin
+    rotateTo := RotateLeft;
+  end;
+  
+  if error_finalrot > 0 then begin
+    rotateToFinal := RotateRight;
+  end else begin
+    rotateToFinal := RotateLeft;
+  end;
+  
+  //Transitions
+  case state of
+    Rotation: begin
+      if abs(error_ang) < MAX_ETF then begin
+        state := Go_Forward;
+      end else if error_dist < TOL_FINDIST then begin
+        state := Final_Rot;
+      end;
+    end;
+    
+    Go_Forward: begin
+      if error_dist < TOL_FINDIST then begin
+        state := Final_Rot;
+      end else if error_dist < DIST_DA then begin
+        state := De_Accel;
+      end else if abs(error_ang) > MAX_ETF + HIST_ETF then begin
+        state := Rotation;
+      end;
+    end;
+
+    De_Accel: begin
+      if error_dist < TOL_FINDIST then begin
+        state := Final_Rot;
+      end else if error_dist > DIST_NEWPOSE  then begin
+        state := Rotation;
+      end;
+    end;
+    
+    Final_Rot: begin
+      if abs(error_finalrot) < THETA_DA then begin
+        state := DeAccel_Final_Rot;
+      end else if error_dist > DIST_NEWPOSE then begin
+        state := Rotation;
+      end;
+    end;
+    
+    DeAccel_Final_Rot: begin
+      if abs(error_finalrot) < TOL_FINTHETA then begin
+        state := Stop;
+      end else if (error_dist > DIST_NEWPOSE) OR (abs(error_finalrot) > THETA_NEWPOSE) then begin
+        state := Rotation;
+      end;
+    end;
+
+    Stop: begin
+      if (error_dist > DIST_NEWPOSE) OR (abs(error_finalrot) > THETA_NEWPOSE) then begin
+        state := Rotation;
+      end;
+    end;
+  end;
+
+  //Outputs
+  case state of
+    Rotation : begin
+      vlin := 0;
+      omega := rotateTo*0.1*VEL_ANG_NOM;
+    end;
+
+    Go_Forward : begin
+      vlin := VEL_LIN_NOM;
+      omega := GAIN_FWD*error_ang;
+    end;
+
+    De_Accel : begin
+      vlin := LinDeAccel;
+      omega := GAIN_DA*error_ang;
+    end;
+
+    Final_Rot : begin
+      vlin := 0;
+      omega := rotateToFinal*0.1*VEL_ANG_NOM;
+    end;
+
+    DeAccel_Final_Rot : begin
+      vlin := 0;
+      omega := sign(error_finalrot)*W_DA;
+    end;
+
+    Stop : begin
+      vlin := 0;
+      omega := 0;
+    end;
+  end;
+
+  //Print information to sheet
+  SetRCValue(12,5, format('%.2g', [xf-x]));
+  SetRCValue(13,5, format('%.2g', [yf-y]));
+  SetRCValue(14,5, format('%.2g', [tf-theta]));
+  
+end;
+
+//Find distance from estimated position to nearest point in a line
+procedure Dist2Line(xi,yi,xf,yf,xr,yr: double; var kl, pix, piy: double);
+var
+  ux, uy: double;
+begin
+  ux := (xf - xi)/sqrt(sqr(xf - xi) + sqr(yf - yi));
+  uy := (yf - yi)/sqrt(sqr(xf - xi) + sqr(yf - yi));
+  kl := (xr*uy - yr*ux - xi*uy + yi*ux)/(sqr(ux) + sqr(uy));
+  pix := -kl*uy + xr;
+  piy := kl*ux + yr;
+end;
+
+
+//Developed function to follow a line
+procedure followLine(xi, yi, xf, yf, tf: double);
+var tr, error_ang, error_dist: double;
+    txt: string;
+begin
+  // just to check if it's running
+  SetRCValue(16,3, format('%.2g', [t]));
+
+  //Calc errors
+  tr := ATan2(yf-yi, xf-xi);
+  error_ang := NormalizeAngle(tr-theta);
+  error_dist := Sqrt((xf-x)*(xf-x) + (yf-y)*(yf-y));
+
+  Dist2Line(xi, yi, xf, yf, x, y, distLine, nearX, nearY);
+  testSideLine := sign(distLine);
+  distLine := abs(distLine);
+
+  //State machine
+  //Transitions
+  case stateLine of
+    Follow_Line: begin
+      if error_dist < 10*TOL_FINDIST then begin
+        stateLine := Approaching;
+      end else if distLine > DIST_NEWLINE then begin
+        stateLine := GoTo_NearXY;
+      end;
+    end;
+
+    Approaching: begin
+      if error_dist < TOL_FINDIST then stateLine := Final_Rot_FL;
+    end;
+
+    Final_Rot_FL: begin
+      if state = Stop then stateLine := Stop_FL;
+    end;
+
+    Stop_FL: begin
+      if distLine > DIST_NEWLINE then stateLine := GoTo_NearXY;
+    end;
+
+    Goto_NearXY: begin
+      if distLine < DIST_NEARLINE then stateLine := Follow_Line;
+    end;
+
+  end;
+
+  //Outputs
+  case stateLine of
+    Follow_Line: begin
+      vlin := VEL_LIN_NOM;
+      omega := 0.3*testSideLine*distLine + 0.15*error_ang*VEL_ANG_NOM;
+      (*
+      if LogOn then begin
+        // x y theta enc1 enc2 Laser
+        txt := format('%g; %g; %g;  %g; %g; %g; %g; %g ', [testSideLine, distLine, error_ang, omega, tr, theta, x, y]);
+        log.add(txt);
+      end;
+      *)
+    end;
+
+    Approaching: begin
+      vlin := LinDeAccel;
+      omega := 0.3*testSideLine*distLine + 0.15*error_ang*VEL_ANG_NOM;
+    end;
+
+    Final_Rot_FL: begin
+      gotoXY(xf, yf, tf);
+    end;
+
+    Stop_FL: begin
+      vlin := 0;
+      omega := 0;
+    end;
+
+    Goto_NearXY: begin
+      gotoXY(nearX, nearY, tr);
+    end;
+
+  end;
+
+  //update previous error to final point
+  error_dist_prev := error_dist;
+
+  //Print information to sheet
+  SetRCValue(17,5, format('%.2g', [error_dist]));
+  SetRCValue(18,5, format('%.3g', [tr]));
+  SetRCValue(19,5, format('%.3g', [error_ang]));
+  SetRCValue(20,5, format('%.2g', [distLine]));
+  SetRCValue(21,5, format('%.2g', [nearX]));
+  SetRCValue(22,5, format('%.2g', [nearY]));
+end;
+
+//Developed function to follow a square
+procedure followSquare(points: array of double);
+var th, xi, xf, yi, yf : double;
+begin
+
+  //Update the final rotation angle
+  th := NormalizeAngle( (stateSquare-1) * (-Pi()/2.0) );
+
+  //Keep incrementing state and reset after squuare complete
+  if stateLine = Stop_FL then begin
+    if stateSquare = Line_4 then begin
+      stateSquare := Line_1;
+    end else begin
+      stateSquare := stateSquare + 1;
+    end;
+    
+    //stateLine := New_Line;
+    stateLine := Follow_Line;
+  end;
+  
+  //Get current line points from array
+  xi := points[2*(stateSquare-1)];
+  yi := points[2*(stateSquare-1)+1];
+
+  //Special case for last points in array, as to not go out of reach
+  if stateSquare <> Line_4 then begin
+    xf := points[2*(stateSquare-1)+2];
+    yf := points[2*(stateSquare-1)+3];
+  end else begin
+    xf := points[0];
+    yf := points[1];
+  end;
+  
+  //Use FollowLine procedure
+  FollowLine(xi, yi, xf, yf, th);
+  
+  //Print information to sheet
+  SetRCValue(25,5, format('%.g', [xi]));
+  SetRCValue(26,5, format('%.g', [yi]));
+  SetRCValue(27,5, format('%.g', [xf]));
+  SetRCValue(28,5, format('%.g', [yf]));
+end;
+
+
+//Used when controlling with arrow keys
+procedure KeyControl(v: double);
+var v1, v2: double;
+begin
+
+  v := 10;
+
+  v1 := 0;
+  v2 := 0;
+  if keyPressed(VK_RIGHT) then begin
+    v1 := +VEL_ANG_NOM;
+    v2 := -VEL_ANG_NOM;
+  end;
+
+  if keyPressed(VK_LEFT) then begin
+    v1 := v1 - VEL_ANG_NOM;
+    v2 := v2 + VEL_ANG_NOM;
+  end;
+
+  if keyPressed(VK_UP) then begin
+    v1 := v1 + 1;
+    v2 := v2 + 1;
+  end;
+
+  if keyPressed(VK_DOWN) then begin
+    v1 := v1 - 1;
+    v2 := v2 - 1;
+  end;
+
+  v1 := v1*v;
+  v2 := v2*v;
+  SetAxisSpeedRef(irobot, 0, v1);
+  SetAxisSpeedRef(irobot, 1, v2);
+end;
+
+
+//Resets robot variables
+procedure ResetRobot;
+begin
+    SetRobotPos(irobot, 0, 0, 0, 1.57);
+    imp1 := 0;
+    imp2 := 0;
+end;
+
+Procedure ResetEstimation;
+begin
+    x := GetRCValue(33,3);
+    y := GetRCValue(34,3);
+    theta := GetRCValue(35,3);
+    SetRCValue(33,1, format('%.5g', [x]));
+    SetRCValue(34,1, format('%.5g', [y]));
+    SetRCValue(35,1, format('%.5g', [theta]));
+    XR := RangeToMatrix(33,1, 3,1);
+
+    P := Mzeros(3,3);
+    P := RangeToMatrix(33,9, 3,3);
+    MatrixToRange(33,5, P);
+
+    R := RangeToMatrix(38,1, 2,2);
+
+    Q := RangeToMatrix(38,5, 2,2);
+
+end;
+
+//Main loop
+procedure Control;
+var odo1,odo2, i, j: integer;
+    xf, yf, tf: double;
+    xi, yi: double;
+    MeasureDist: double;
+    MeasurePos: TPos;
+    txt: string;
+begin
+
+  //Check if any button or key is pressed
+  
+  //Reset buttons
+  // Global reset
+  if RCButtonPressed(8,6) then begin
+    ResetRobot();
+    ControlMode := 'Stop';
+    ResetEstimation;
+  end;
+
+  if RCButtonPressed(8,4) then begin
+    ResetRobot();
+  end;
+
+  if RCButtonPressed(32,2) then begin
+    ResetEstimation;
+  end;
+
+  //Stop button
+  if RCButtonPressed(9,4) then begin
+    ControlMode := 'Stop';
+  //S key enables user-control mode
+  end else if keyPressed(ord('S')) then begin
+    ControlMode := 'keys';
+
+  //GotoXY button
+  end else if RCButtonPressed(11,1) then begin
+    state := Rotation;
+    ControlMode := 'gotoXY';
+
+  //FollowLine button
+  end else if RCButtonPressed(16,1) then begin
+    ControlMode := 'followLine';
+    state := Rotation;
+    stateLine := Follow_Line;
+
+  //FollowSquare button
+  end else if RCButtonPressed(24,1) then begin
+    ControlMode := 'followSquare';
+    stateSquare := Line_1;
+    state := Rotation;
+    stateLine := Follow_line;
+
+ //Go Forward
+  end else if RCButtonPressed(29,1) then begin
+    ControlMode := 'goforward';
+  end;
+  
+  //40ms updates
+  t := t + dt;
+
+  //Get Laser information
+  LaserValues := LaserModel(0, iLaser, 0, 1, 0, 0.0001523985, 1.3102842636);
+
+  // Association and Validation phase
+  for j:=1 to NBEACONS do begin
+    BeaconCluster[j].x := 0;
+    BeaconCluster[j].y := 0;
+    BeaconCluster[j].n := 0;
+  end;
+  for i:= firstRay to LastRay do begin
+    MeasureDist := Mgetv(LaserValues, i, 0)+0.02;         // add 0,02 to compensate distance to beacon center
+    if MeasureDist > 0 then begin
+      // calculate measure coordinates in the global referential frame
+      // angle of the measure in the laser local frame = (i-NBEAMS2)*pi()/NBEAMS2 with NBEAMS2 = number of beams dividade by two
+      // the laser referential is aligned with the robot referencial but 0,14m back (x axis pointing forward, z axis pointing up)
+      MeasurePos.x := MeasureDist*cos((i-NBEAMS2)*pi()/NBEAMS2 + theta) + x - 0.14*cos(theta) ;  // add 0.14 = distance to the origin of robot referencial
+      MeasurePos.y := MeasureDist*sin((i-NBEAMS2)*pi()/NBEAMS2 + theta) + y - 0.14*sin(theta);
+      for j:=1 to NBEACONS do begin
+        if Dist(BeaconPos[j].x - MeasurePos.x, BeaconPos[j].y - MeasurePos.y) < 0.1 then begin  // 0.05 to 0.2 (0.25 already fails)
+          // increase de number of points for this beacon
+          BeaconCluster[j].n := BeaconCluster[j].n + 1;
+          // calculate de average coordinates
+          BeaconCluster[j].x := ((BeaconCluster[j].x * (BeaconCluster[j].n - 1)) + MeasurePos.x)/BeaconCluster[j].n;
+          BeaconCluster[j].y := ((BeaconCluster[j].y * (BeaconCluster[j].n - 1)) + MeasurePos.y)/BeaconCluster[j].n;
+        end;
+      end;
+    end;
+  end;
+  for j:=1 to NBEACONS do begin
+    // calculate measured distance and angle for the beacon
+    BeaconCluster[j].dist := Dist(BeaconCluster[j].x - x, BeaconCluster[j].y - y);
+    BeaconCluster[j].ang := NormalizeAngle(ATan2(BeaconCluster[j].y - y, BeaconCluster[j].x - x) - theta);
+    // show detected beacons
+    SetRCValue(1,j, format('%d', [BeaconCluster[j].n]));
+    SetRCValue(2,j, format('%g', [BeaconCluster[j].x]));
+    SetRCValue(3,j, format('%g', [BeaconCluster[j].y]));
+  end;
+
+  if RCButtonPressed(2, 9) then begin // Start Log
+    if log <> nil then Log.free;
+    Log := TStringList.create;
+    LogOn := true;
+    SetRCValue(1,9,'Log ON');
+  end;
+
+  if RCButtonPressed(2, 10) then begin // Stop Log
+    LogOn := false;
+    SetRCValue(1,9,'Log OFF');
+  end;
+
+  if RCButtonPressed(2, 11) then begin // Save Log
+    if log <> nil then Log.savetofile(GetRCText(2, 12)+'.csv');
+  end;
+
+
+  (*
+  if LogOn then begin
+    // x y theta enc1 enc2 Laser
+    //txt := format('%g %g %g  %d %d ', [posx, posy, posang, GetAxisOdo(0, 0), GetAxisOdo(0, 1)]);
+    txt := '';
+    for i:= firstRay to LastRay do begin
+      txt := txt + format('%g ', [Mgetv(LaserValues, i, 0)])+';';
+    end;
+    log.add(txt);
+    SetRCValue(1,9,'Log ON');
+  end;
+  *)
+
+  //Update odometry
+  odo1:=GetAxisOdo(0,0);
+  imp1:=imp1+odo1;
+  odo2:=GetAxisOdo(0,1);
+  imp2:=imp2+odo2;
+
+  // Part 1 of Prediction phase
+  // Calculate an estimate of the position and angle
+  PredictPosition(odo1, odo2);
+
+  // Part 2 of EKF Prediction phase and EKF Correction phase
+  if ControlMode <> 'Stop' then begin
+    LocationFromSensors();
+  end;
+
+  //Choice of control mode
+  if ControlMode = 'keys' then begin
+    KeyControl(10);
+  
+  end else if ControlMode = 'gotoXY' then begin
+    //Get desired position
+    xf := GetRCValue(12, 2);
+    yf := GetRCValue(13, 2);
+    tf := GetRCValue(14, 2);
+    gotoXY(xf, yf, tf);
+
+  end else if ControlMode = 'followLine' then begin
+    //Get desired line
+    xi := GetRCValue(17, 2);
+    yi := GetRCValue(18 ,2);
+    xf := GetRCValue(19, 2);
+    yf := GetRCValue(20, 2);
+    tf := GetRCValue(21, 2);
+    followLine(xi, yi, xf, yf, tf);
+  
+  end else if ControlMode = 'followSquare' then begin
+    followSquare([0,0 , 0,1 , 1,1 , 1,0]);
+
+  end else if ControlMode = 'Stop' then begin
+    vlin := 0;
+    omega := 0;
+  end else if ControlMode = 'goforward' then begin
+    vlin := VEL_LIN_NOM;
+    omega := 0;
+  end;
+  
+  
+  //From the specified control mode we should now have updated vlin and omega
+  MotorVel();
+  
+  SetRCValue(   1, 5, format(  '%d',     [odo1]));
+  SetRCValue(   2, 5, format(  '%d',     [odo2]));
+  
+  SetRCValue(   4, 2, format(  '%d',     [imp1]));
+  SetRCValue(   5, 2, format(  '%d',     [imp2]));
+
+  SetRCValue(   4, 5, format(  '%.3g',   [x]));
+  SetRCValue(   5, 5, format(  '%.3g',   [y]))
+  SetRCValue(   6, 5, format(  '%.4g',   [theta]));
+
+  SetRCValue(   7, 2, format(  '%s',     [stateStrings[0][state]]));
+  SetRCValue(   8, 2, format(  '%s',     [stateStrings[1][stateLine]]));
+  SetRCValue(   9,2,  format(  '%s',     [stateStrings[2][stateSquare]]));
+
+
+  // Chart
+  if RCButtonPressed(5, 9) then begin
+    if ChartOn = TRUE then begin
+      ChartOn := FALSE;
+      SetRCValue(4,9,'Chart OFF');
+    end else begin
+      ChartOn := TRUE;
+      SetRCValue(4,9,'Chart ON');
+    end;
+  end;
+  if RCButtonPressed(5, 10) then begin
+    ChartSeriesClear(0, 0);
+    ChartSeriesClear(0, 1);
+  end;
+  if chartON then begin
+    ChartSeriesAddXY(0, 0, x, y);
+    ChartSeriesAddXY(0, 1, GetRobotX(0) , GetRobotY(0));
+  end;
+
+end;
+
+
+//Only runs once
+procedure Initialize;
+var qV, qOmega, rSensD, rSensA: double;
+begin
+  irobot := 0;
+
+  iLaser := GetSensorIndex(0, 'ranger2d');
+  firstRay := 0;
+  lastRay := 359;
+
+  BeaconPos[1].x := -0.3;
+  BeaconPos[1].y := 1.3;
+  BeaconPos[2].x := 1.3;
+  BeaconPos[2].y := 1.3;
+  if NBEACONS = 3 then begin
+    BeaconPos[3].x := 0.5;
+    BeaconPos[3].y := -0.3;
+  end;
+
+  Log := nil;
+  LogOn := false;
+  SetRCValue(1,9,'Log OFF');
+
+  //Var init
+  t := 0;
+  w := 1;
+  vlin := 0;
+  vlin_prev := 0;
+  omega := 0;
+  omega_prev := 0;
+  state := Stop;
+  stateLine := Stop_FL;
+  stateSquare := 0;
+  error_dist_prev := 99999;
+  theta := 0;
+  ControlMode := 'Stop';
+
+  //Some buttons
+  SetRCValue(8,4, '[RESET POS]');
+  SetRCValue(9,4, '[STOP]');
+
+  //Robot odometry and sensors
+  SetRCValue(1,1, 'Beacons:');
+
+  SetRCValue(1,4, 'Odo1:');
+  SetRCValue(2,4, 'Odo2:');
+  SetRCValue(4,1, 'OdoAcum1:');
+  SetRCValue(5,1, 'OdoAcum2:');
+
+  //Estimate of robot state
+  SetRCValue(4,4, 'X estimado');
+  SetRCValue(5,4, 'Y estimado');
+  SetRCValue(6,4, 'Theta estimado');    SetRCValue(6,6, 'rad');
+
+  //State Machine information
+  stateStrings[0] := ['Rotation', 'GoForward', 'DeAccel', 'Final_Rot', 'DeAccel_Final_Rot', 'Stop', 'Not yet'];
+  stateStrings[1] := ['Follow_Line', 'Approaching', 'Final_Rot_FL', 'Stop_FL', 'Goto_NearXY', 'Not yet'];
+  stateStrings[2] := ['Not yet', 'Line_1', 'Line_2', 'Line_3', 'Line_4'];
+  SetRCValue(7,1, 'State');
+  SetRCValue(8,1, 'State Line');
+  SetRCValue(9,1, 'State Square');
+
+  //GotoXY
+  SetRCValue(11,1, '[GoToXY]');         SetRCValue(11,2, 'INPUTS');
+  SetRCValue(12,1, 'X final');
+  SetRCValue(13,1, 'Y final');
+  SetRCValue(14,1, 'Theta final');
+  SetRCValue(12,4, 'X final - X est');
+  SetRCValue(13,4, 'Y final - X est');
+  SetRCValue(14,4, 'T final - T est');
+
+  //FollowLine
+  SetRCValue(16,1, '[FollowLine]');     SetRCValue(16,2, 'INPUTS');
+  SetRCValue(17,1, 'X inicial');
+  SetRCValue(18,1, 'Y inicial');
+  SetRCValue(19,1, 'X final');
+  SetRCValue(20,1, 'Y final');
+  SetRCValue(21,1, 'Theta final');
+  SetRCValue(17,4, 'Erro dist final');
+  SetRCValue(18,4, 'Theta reta');
+  SetRCValue(19,4, 'T reta - T est');
+  SetRCValue(20,4, 'Dist a reta');
+  SetRCValue(21,4, 'Near X');
+  SetRCValue(22,4, 'Near Y');
+  
+  //FollowSquare
+  SetRCValue(24,1, '[FollowSquare]');
+  SetRCValue(25,4, 'X init');
+  SetRCValue(26,4, 'Y init');
+  SetRCValue(27,4, 'X final');
+  SetRCValue(28,4, 'Y final');
+  
+  //Extended Kalman Filter
+  qV := Power(lin_stddev,2);
+  qOmega := Power(omega_stddev,2);
+  rSensD := Power(sensD_stddev,2);
+  rSensA := Power(sensA_stddev,2);
+
+  SetRCValue(30,1, 'EKF');
+  SetRCValue(32,1, 'X');
+
+  ResetEstimation;
+
+  SetRCValue(37,1, 'R');
+    R := Mzeros(2,2);
+    Msetv(R,0,0,rSensD);
+    Msetv(R,1,1,rSensA);
+    MatrixToRange(38,1, R);
+    
+  SetRCValue(37,5, 'Q');
+    Q := Mzeros(2,2);
+    MatrixToRange(38,5, Q);
+    SetRCValue(38,5, format('%.5g', [qV]));
+    SetRCValue(39,6, format('%.5g', [qOmega]));
+    Q := RangeToMatrix(38,5, 2,2);
+  
+  SetRCvalue(41,1, 'df/dX');
+    grad_f_X := Meye(3);
+    MatrixToRange(42,1, grad_f_X);
+  
+  SetRCValue(41,5, 'df/dq');
+    grad_f_q := Mzeros(3,2);
+    MatrixToRange(42,5, grad_f_q);
+    SetRCValue(44,6, format('%d', [1]));
+    grad_f_q := RangeToMatrix(42,5, 3,2);
+    
+  SetRCvalue(46,1, 'dh/dX');
+    grad_h_X := Mzeros(2,3);
+    MatrixToRange(47,1, grad_h_X);
+    SetRCValue(48,3, format('%d', [1]));
+
+  SetRCValue(50,1, 'Z');
+    SetRCValue(51,1, '0');
+    SetRCValue(52,1, '0');
+    
+  SetRCValue(50,3, 'Z_E');
+    SetRCValue(51,3, '0');
+    SetRCValue(52,3, '0');
+    
+  SetRCValue(50,5, 'Kf');
+  
+  ClearButtons();
+
+
+  // Charts
+  ChartSeriesSetCount(0, 2);
+  ChartSeriesSetColor(0, 0, clGreen);
+  ChartSeriesSetColor(0, 1, clRed);
+  ChartSeriesClear(0, 0);
+  ChartSeriesClear(0, 1);
+  ChartSetAxisMinMax(0, -0.05, 1.05, -0.05, 1.05);
+  ChartON := False;
+  SetRCValue(4,9,'Chart OFF');
+end;
+
+{Thanks to Guilherme Lawless}
+

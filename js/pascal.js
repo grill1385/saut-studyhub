@@ -95,6 +95,24 @@
   /* ------------------------------------------------------------------ */
   /* Runtime (API SimTwo mockada + matemática Pascal)                     */
   /* ------------------------------------------------------------------ */
+  /* Matriz partilhada com o js/matlab.js quando disponível (mesma representação:
+     row-major com {r, c, d}), para o avaliador poder comparar valores. */
+  function newMat(r, c) {
+    var ML = global.SAUT_MATLAB;
+    if (ML && ML.Mat) return new ML.Mat(r, c);
+    return { r: r, c: c, d: new Float64Array(r * c) };
+  }
+  function isMatV(x) { return x && typeof x === "object" && typeof x.r === "number" && typeof x.c === "number" && x.d; }
+  function ewMat(A, B, f, nome) {
+    if (typeof B === "number") { var S = newMat(A.r, A.c); for (var q = 0; q < A.d.length; q++) S.d[q] = f(A.d[q], B); return S; }
+    if (typeof A === "number") { var S2 = newMat(B.r, B.c); for (var q2 = 0; q2 < B.d.length; q2++) S2.d[q2] = f(A, B.d[q2]); return S2; }
+    if (A.r !== B.r || A.c !== B.c)
+      throw new PasError(nome + ": dimensões incompatíveis (" + A.r + "x" + A.c + " e " + B.r + "x" + B.c + ")", 0);
+    var R = newMat(A.r, A.c);
+    for (var i = 0; i < A.d.length; i++) R.d[i] = f(A.d[i], B.d[i]);
+    return R;
+  }
+
   function makeRuntime(env) {
     env = env || {};
     var sheet = env.sheet || (env.sheet = {});
@@ -170,6 +188,99 @@
       getsensorvalue: function (rb, s) { return (env.sensors && env.sensors[s]) || 0; },
       keypressed: function () { return false; },
       writeln: function () { log.push(Array.prototype.join.call(arguments, " ")); },
+      /* --- gerador com semente fixa (execuções reprodutíveis) --- */
+      __seed: (env.seed || 20260806) >>> 0,
+      __rand: function () {
+        var x = RT.__seed;
+        x ^= x << 13; x >>>= 0; x ^= x >> 17; x ^= x << 5; x >>>= 0;
+        RT.__seed = x;
+        return x / 4294967296;
+      },
+      __spare: null,
+      randg: function (mean, sigma) {
+        if (RT.__spare !== null) { var v = RT.__spare; RT.__spare = null; return mean + sigma * v; }
+        var u1 = Math.max(RT.__rand(), 1e-12), u2 = RT.__rand();
+        var r = Math.sqrt(-2 * Math.log(u1)), th = 2 * Math.PI * u2;
+        RT.__spare = r * Math.sin(th);
+        return mean + sigma * r * Math.cos(th);
+      },
+      random: function () { return RT.__rand(); },
+
+      /* --- álgebra matricial do SimTwo --- */
+      mzeros: function (r, c) { return newMat(r | 0, c | 0); },
+      meye: function (n) {
+        var M = newMat(n | 0, n | 0);
+        for (var i = 0; i < n; i++) M.d[i * M.c + i] = 1;
+        return M;
+      },
+      mnumrows: function (M) { return M ? M.r : 0; },
+      mnumcols: function (M) { return M ? M.c : 0; },
+      mgetv: function (M, i, j) { return M.d[i * M.c + j]; },
+      msetv: function (M, i, j, v) { M.d[i * M.c + j] = v; return v; },
+      mtran: function (A) {
+        var R = newMat(A.c, A.r);
+        for (var i = 0; i < A.r; i++) for (var j = 0; j < A.c; j++) R.d[j * R.c + i] = A.d[i * A.c + j];
+        return R;
+      },
+      mmult: function (A, B) {
+        if (typeof A === "number") { var S = newMat(B.r, B.c); for (var q = 0; q < B.d.length; q++) S.d[q] = A * B.d[q]; return S; }
+        if (typeof B === "number") { var S2 = newMat(A.r, A.c); for (var q2 = 0; q2 < A.d.length; q2++) S2.d[q2] = B * A.d[q2]; return S2; }
+        if (A.c !== B.r) throw new PasError("MMult: dimensões incompatíveis (" + A.r + "x" + A.c + " por " + B.r + "x" + B.c + ")", 0);
+        var R = newMat(A.r, B.c);
+        for (var i = 0; i < A.r; i++)
+          for (var k = 0; k < A.c; k++) {
+            var a = A.d[i * A.c + k];
+            if (a === 0) continue;
+            for (var j = 0; j < B.c; j++) R.d[i * R.c + j] += a * B.d[k * B.c + j];
+          }
+        return R;
+      },
+      madd: function (A, B) { return ewMat(A, B, function (a, b) { return a + b; }, "MAdd"); },
+      msub: function (A, B) { return ewMat(A, B, function (a, b) { return a - b; }, "MSub"); },
+      minv: function (A) {
+        if (A.r !== A.c) throw new PasError("Minv: a matriz tem de ser quadrada", 0);
+        var n = A.r, M = [], i, j, k;
+        for (i = 0; i < n; i++) {
+          M[i] = [];
+          for (j = 0; j < n; j++) M[i][j] = A.d[i * n + j];
+          for (j = 0; j < n; j++) M[i][n + j] = i === j ? 1 : 0;
+        }
+        for (i = 0; i < n; i++) {
+          var p = i;
+          for (k = i + 1; k < n; k++) if (Math.abs(M[k][i]) > Math.abs(M[p][i])) p = k;
+          if (Math.abs(M[p][i]) < 1e-14) throw new PasError("Minv: matriz singular", 0);
+          var t = M[i]; M[i] = M[p]; M[p] = t;
+          var piv = M[i][i];
+          for (j = 0; j < 2 * n; j++) M[i][j] /= piv;
+          for (k = 0; k < n; k++) {
+            if (k === i) continue;
+            var f = M[k][i];
+            if (f === 0) continue;
+            for (j = 0; j < 2 * n; j++) M[k][j] -= f * M[i][j];
+          }
+        }
+        var R = newMat(n, n);
+        for (i = 0; i < n; i++) for (j = 0; j < n; j++) R.d[i * n + j] = M[i][n + j];
+        return R;
+      },
+      /* leitura/escrita na folha de cálculo */
+      rangetomatrix: function (row, col, nrows, ncols) {
+        var M = newMat(nrows, ncols);
+        for (var i = 0; i < nrows; i++)
+          for (var j = 0; j < ncols; j++) M.d[i * ncols + j] = RT.getrcvalue(row + i, col + j);
+        return M;
+      },
+      matrixtorange: function (row, col, M) {
+        for (var i = 0; i < M.r; i++)
+          for (var j = 0; j < M.c; j++) RT.setrcvalue(row + i, col + j, String(+M.d[i * M.c + j].toPrecision(12)));
+        return M;
+      },
+      /* sensores que devolvem matrizes (ex.: laser) */
+      getsensorvalues: function (rb, s) {
+        return env.laser || newMat(0, 1);
+      },
+      getsensorindex: function () { return 0; },
+
       /* --- utilitários internos --- */
       __env: env
     };
@@ -539,9 +650,15 @@
         case "index": return genExpr(e.obj, sc) + "[" + genExpr(e.idx, sc) + "]";
         case "call": {
           var args = e.args.map(function (a) { return genExpr(a, sc); });
+          if (e.callee.k === "field") {
+            /* método de objeto (ex.: Log.add(txt)) — tolerado, sem semântica */
+            return "(function(){var o=" + genExpr(e.callee.obj, sc) + "; return (o && o." + e.callee.name +
+              ") ? o." + e.callee.name + "(" + args.join(",") + ") : 0;})()";
+          }
           if (e.callee.k === "var") {
             var nm = e.callee.name;
             if (routines[nm]) return "R." + nm + "(" + args.join(",") + ")";
+            if (nm === "pi") return "RT.pi";
             if (BUILTINS[nm]) return "RT." + nm + "(" + args.join(",") + ")";
             /* sqr/abs em maiúsculas etc. já normalizados; desconhecido -> erro claro */
             throw new PasError("função desconhecida '" + nm + "'", e.line);
@@ -673,8 +790,9 @@
       }
       if (/string/.test(s)) return '""';
       if (/boolean/.test(s)) return "false";
-      if (/tstringlist|tudpbuffer|matrix|record/.test(s)) return "{}";
-      return "0";
+      if (/\b(double|real|single|extended|integer|byte|word|longint|cardinal|int64|shortint|smallint)\b/.test(s)) return "0";
+      /* tipo desconhecido (registo, matriz, lista…) -> objeto, para permitir campos */
+      return "{}";
     }
 
     var js = '"use strict";\nvar R = {};\n';
@@ -695,8 +813,8 @@
         globalInit[v.name] = new Array(Math.max(n, 1)).fill(0);
       } else if (/string/.test(s)) globalInit[v.name] = "";
       else if (/boolean/.test(s)) globalInit[v.name] = false;
-      else if (/tstringlist|tudpbuffer|matrix|record|trobotcontrols/.test(s)) globalInit[v.name] = null; // preenchido pelo env
-      else globalInit[v.name] = 0;
+      else if (/\b(double|real|single|extended|integer|byte|word|longint|cardinal|int64|shortint|smallint)\b/.test(s)) globalInit[v.name] = 0;
+      else globalInit[v.name] = null; /* registos/matrizes: preenchidos pelo caso de teste */
     });
 
     var factory;
@@ -725,6 +843,12 @@
   /* ------------------------------------------------------------------ */
   global.SAUT_PASCAL = {
     PasError: PasError,
+    newMat: newMat,
+    matFromRows: function (rows) {
+      var r = rows.length, c = r ? rows[0].length : 0, M = newMat(r, c);
+      for (var i = 0; i < r; i++) for (var j = 0; j < c; j++) M.d[i * c + j] = rows[i][j];
+      return M;
+    },
     lex: lex,
     parse: parse,
     compile: compile,

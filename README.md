@@ -31,6 +31,8 @@ js/data/lab3spec.js   Testes/solução de referência da Labwork 3 (gerado)
 js/data/m3lab.js      Labwork 3 com sub-tarefas de código avaliadas
 js/data/lab4spec.js   Testes/solução de referência da Labwork 4 (gerado)
 js/data/m4lab.js      Labwork 4 com sub-tarefas de código avaliadas
+js/data/lab5spec.js   Testes/solução de referência da Labwork 5 (gerado)
+js/data/m5lab.js      Labwork 5 com sub-tarefas de código avaliadas
 tools/                Geradores das specs e testes (não fazem parte da app)
 assets/slides/        Slides das aulas teóricas (PNG por capítulo)
 PLANO_IMPLEMENTACAO.md  Plano de desenvolvimento e estado do conteúdo
@@ -43,10 +45,11 @@ Para transferir entre PCs usar `⚙ Definições → Exportar progresso` / `Impo
 
 ## Labworks com código avaliado
 
-Nas Labworks **3** (M3, último módulo — Pascal do SimTwo) e **4** (M4, último módulo — MATLAB)
-escreves tu o código e carregas em **▶ Avaliar código**. O hub executa o teu código e o da
+Nas Labworks **3** e **5** (Pascal do SimTwo) e **4** (MATLAB), no último módulo de cada
+milestone, escreves tu o código e carregas em **▶ Avaliar código**. O hub executa o teu código e o da
 solução oficial do professor nos mesmos dados e compara os **valores produzidos**: velocidades
-das rodas e estados das máquinas na Lab 3, matrizes e estimativas do EKF na Lab 4.
+das rodas e estados das máquinas na Lab 3, matrizes e estimativas do EKF nas Labs 4 e 5,
+clusters de pontos do laser na Lab 5.
 
 Não tens de escrever igual ao professor: `if/else` em vez de `case`, `diag()` em vez de escrever
 a matriz à mão, `while` em vez de `for`, outros nomes de variáveis — desde que o comportamento

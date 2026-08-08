@@ -132,7 +132,11 @@ Perguntas do exame modelo (mapa no docx, Tabela 10) devem aparecer como exercíc
 - [x] v6 (sessão 5): camada **MATLAB** (`js/matlab.js`) + grader estendido (harness `%%USER%%`,
   testes `assert`) + **Labwork 4 reformulada** (`js/data/lab4spec.js` + `js/data/m4lab.js`,
   substitui m4-mod7 em runtime; `m4.js` não foi tocado). 10 sub-tarefas. Ver secções 12.4/12.5.
-- [ ] Labs 5/6 avaliáveis — ver tabela 12.5 (começar pela Lab 5)
+- [x] v7 (sessão 6): álgebra matricial do SimTwo no `js/pascal.js` + **Labwork 5 reformulada**
+  (`js/data/lab5spec.js` + `js/data/m5lab.js`, substitui m5-mod6 em runtime; `m5.js` intacto).
+  7 sub-tarefas: odometria diferencial, laser→mundo, cluster→medida, associação, predição,
+  atualização e sintonia. Ver secção 12.5.
+- [ ] Lab 6 avaliável — ver tabela 12.6 (sem oráculo completo; ponderar avaliação só estrutural)
 - [ ] M6 conteúdo (stub) — PRÓXIMO PASSO: decks SAUT_Prob_Localization (23 págs) + SAUT_Loc_Map_Matching (27 págs); sem lab dedicada → módulo final = mini-teste estilo M0. Perguntas exame: MCL/kidnap, rejeição outliers (já introduzida no m5-mod2!), map matching P14, landmarks lineares. Atualizar topics.js (mcl, mapm) e graph.js (nós mcl, mapm).
 - [ ] M7 conteúdo (stub) — decks SLAM (38), MultiRobot (12), Drone (8) + Labs 6/7 (checklist guiado). Atualizar topics.js (slam, mrob) e graph.js (slam, mrob).
 
@@ -226,11 +230,45 @@ fragmento de referência existe mesmo** nos `.m` do professor (comparação sem 
 espaços) antes de escrever — se alguém mexer nas soluções, o gerador falha em vez de gerar
 silenciosamente um oráculo errado.
 
-### 12.5 Como replicar para as Labs 5 e 6
+### 12.5 Camada matricial no Pascal (v7, Lab 5)
+
+O `js/pascal.js` passou a expor a **álgebra matricial do SimTwo**, partilhando a classe `Mat`
+do `js/matlab.js` quando disponível: `Mzeros`, `Meye`, `Mtran`, `MMult`, `Madd`, `Msub`, `Minv`,
+`Mgetv`, `Msetv`, `MNumRows`, `MNumCols`, e a ponte com a folha de cálculo
+(`RangeToMatrix(linha, col, nLin, nCol)` / `MatrixToRange(linha, col, M)`).
+Juntou-se também `RandG` (com semente fixa) e `GetSensorValues` (devolve `env.laser`).
+
+Correções ao transpilador feitas nesta sessão:
+- `pi()` com parênteses (era resolvido como chamada a um número);
+- chamadas a métodos de objeto (`Log.add(txt)`) deixam de rebentar em codegen;
+- `initFor`: tipos desconhecidos (registos como `TPos`) passam a inicializar a `{}` em vez de `0`
+  — era isto que impedia `MeasurePos.x := …` de funcionar.
+
+Novidades no `js/grader.js`:
+- testes `assert` também no caminho **Pascal** (`captureG` lê globais depois da execução);
+- entradas matriciais nos casos de teste via `{__mat: [[…]]}`;
+- `tc.laser` alimenta **e** `env.laser` (para `GetSensorValues`) **e** a global `LaserValues`;
+- matrizes nos snapshots são convertidas para arrays aninhados antes da comparação.
+
+> **Armadilha que já custou caro:** antes, se a *referência* rebentasse num caso de teste, o
+> grader marcava-o como "ignorado" e contava-o como **passado** — a Lab 5 chegou a dar 4/4 com
+> zero testes realmente executados. Agora um erro na referência aborta a avaliação com
+> `phase:"interno"` e uma mensagem a dizer que o defeito é da spec. Não voltar a silenciar isto.
+
+**Nota de precisão:** o professor faz as matrizes passarem pela folha com `format('%.4g')`, o que
+corta para 4 algarismos significativos. As tarefas matriciais da Lab 5 usam por isso
+`tolPct: 5e-3`, para não penalizar quem construa as matrizes diretamente com `Msetv`.
+
+Spec: `js/data/lab5spec.js`, gerada por `tools/gen_lab5spec.py` (7 tarefas), que também **simula
+os varrimentos do laser** (interseção raio–círculo com os três postes e as paredes) para os casos
+de associação.
+
+### 12.6 Como replicar para a Lab 6
 | Lab | Solução disponível | O que falta construir |
 |-----|--------------------|-----------------------|
-| 5 | `Lab_5/SimTwo64_LabWork__5_EKF.zip → EKF_Beacon_Laser_Sol/NXTControl.spas` | reutiliza `pascal.js`; falta ligar as funções de **matrizes** do SimTwo (`MMult`, `Mtran`, `Minv`, `Madd`, `Msub`, `Meye`, `RangeToMatrix`, `MatrixToRange`) ao runtime — a classe `Mat` do `js/matlab.js` já serve de base — + `lab5spec.js` |
-| 6 | `Lab_6/SAUT_ESP_-_stud.zip` (parcial), `picoRobotSAUT.zip` | interpretador **C++** ou avaliação só estrutural; a solução do professor está incompleta |
+| 6 | `Lab_6/SAUT_ESP_-_stud.zip` (parcial), `picoRobotSAUT.zip` | interpretador **C++** ou avaliação só estrutural; a solução do professor está incompleta, portanto não há oráculo fiável para metade das tarefas |
 
-Próximo passo recomendado: **Lab 5** — é o mais barato, porque o Pascal já está feito e a
-álgebra matricial já existe; só falta expor as funções `M*` do SimTwo no runtime do `pascal.js`.
+A Lab 6 é a única que falta e é a mais cara: exigiria um terceiro interpretador (C++) e, pior,
+não há solução completa do professor para servir de oráculo. Alternativa realista: avaliação
+**só estrutural** (regras + dicas), sem execução, deixando claro no módulo que ali não há
+verificação de comportamento.
