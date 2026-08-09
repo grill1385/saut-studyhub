@@ -136,6 +136,10 @@ Perguntas do exame modelo (mapa no docx, Tabela 10) devem aparecer como exercíc
   (`js/data/lab5spec.js` + `js/data/m5lab.js`, substitui m5-mod6 em runtime; `m5.js` intacto).
   7 sub-tarefas: odometria diferencial, laser→mundo, cluster→medida, associação, predição,
   atualização e sintonia. Ver secção 12.5.
+- [x] v8 (sessão 7): **notação uniformizada** em Δd/Δθ nas Labs 3, 4 e 5 (secção 12.7), a partir
+  de uma pergunta do utilizador sobre a ausência de `dt` no `grad_f_U`. Reescritos contextos,
+  esqueletos, dicas e regras; o `SIM_HARNESS` da Lab 5 passou a estar escrito em deslocamentos
+  (comportamento numérico idêntico, verificado).
 - [ ] Lab 6 avaliável — ver tabela 12.6 (sem oráculo completo; ponderar avaliação só estrutural)
 - [ ] M6 conteúdo (stub) — PRÓXIMO PASSO: decks SAUT_Prob_Localization (23 págs) + SAUT_Loc_Map_Matching (27 págs); sem lab dedicada → módulo final = mini-teste estilo M0. Perguntas exame: MCL/kidnap, rejeição outliers (já introduzida no m5-mod2!), map matching P14, landmarks lineares. Atualizar topics.js (mcl, mapm) e graph.js (nós mcl, mapm).
 - [ ] M7 conteúdo (stub) — decks SLAM (38), MultiRobot (12), Drone (8) + Labs 6/7 (checklist guiado). Atualizar topics.js (slam, mrob) e graph.js (slam, mrob).
@@ -262,6 +266,37 @@ corta para 4 algarismos significativos. As tarefas matriciais da Lab 5 usam por 
 Spec: `js/data/lab5spec.js`, gerada por `tools/gen_lab5spec.py` (7 tarefas), que também **simula
 os varrimentos do laser** (interseção raio–círculo com os três postes e as paredes) para os casos
 de associação.
+
+### 12.7 Convenção de notação: deslocamentos, não velocidades (v8)
+
+**Regra para todo o conteúdo do hub:** o professor raciocina em **deslocamentos por ciclo**
+`Δd = v·dt` e `Δθ = ω·dt`, e não em velocidades. Todos os textos, esqueletos e dicas têm de
+respeitar isso.
+
+Porque importa: os Jacobianos do EKF são `∂f/∂[Δd ; Δθ]`, não `∂f/∂[v ; ω]`. É isso que explica
+a ausência de `dt` na primeira coluna do `grad_f_U` (Lab 4) e a entrada (3,2) ser `1` e não `dt`.
+Derivar em ordem às velocidades daria a mesma matriz **multiplicada por dt**, e obrigaria a
+`Q_vel = Q_desl/dt²` para dar o mesmo `P` — verificado numericamente. Q lê-se, portanto, em
+«metros por ciclo», não «metros por segundo»: na Lab 4, `Q=diag(0.0005²)` significa ~0.5 mm e
+0.5 mrad por ciclo de 40 ms, o que é plausível para odometria (como velocidade seriam 0.5 mm/s,
+absurdo).
+
+Onde isto aparece no código do professor:
+
+| Lab | Variáveis | Nome da matriz | Notas |
+|-----|-----------|----------------|-------|
+| 3 | `delta_d`, `delta_dn`, `delta_th` | — | já em deslocamentos |
+| 4 | `v`, `omega`, `dt` | **`grad_f_U`** | nome enganador: sugere ∂f/∂U mas é ∂f/∂[Δd;Δθ] |
+| 5 | `d`/`delta_theta` (odometria), `vlin`/`omega` (EKF) | **`grad_f_q`** | o `q` confirma: ruído de processo |
+
+**Não renomear as variáveis do código de referência nem dos harnesses** — o utilizador cola o
+código nos ficheiros do professor, onde elas se chamam `v`, `omega`, `vlin`. O que se ajusta é o
+*texto*, e os esqueletos podem introduzir `delta_d`/`delta_theta` como variáveis auxiliares
+derivadas das dele (verificado: o grader aceita as duas escritas).
+
+Nas tarefas de controlo da Lab 3 (`MotorVel`, `gotoXY`, `FollowLine`) continua a falar-se de
+**velocidades** — e está correto, porque ali são mesmo comandos de velocidade enviados aos
+motores, não linearizações.
 
 ### 12.6 Como replicar para a Lab 6
 | Lab | Solução disponível | O que falta construir |

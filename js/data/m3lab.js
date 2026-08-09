@@ -98,7 +98,17 @@ desde a última leitura</b> de cada motor, ou seja já são incrementos.</p>
   <code>thodo + delta_th/2</code> — é isso que os testes de trajetória curva verificam.</li>
 </ol>
 <p>Os testes chamam a rotina várias vezes seguidas com os mesmos impulsos, para que os erros de
-integração se acumulem e fiquem visíveis.</p>`),
+integração se acumulem e fiquem visíveis.</p>
+
+<div class="labctx"><b>Convenção a fixar desde já.</b> Repara que tudo aqui são
+<b>deslocamentos por ciclo</b> — <code>delta_d</code>, <code>delta_dn</code>,
+<code>delta_th</code> — e não velocidades. É a notação que o professor usa de forma consistente
+em toda a cadeia de odometria e de EKF (M4 e M5), e não é um detalhe de estilo: quando chegares
+aos Jacobianos do filtro, eles derivam em ordem a estes deslocamentos. É isso que explica, por
+exemplo, o <code>grad_f_U</code> da Lab 4 não ter nenhum <code>dt</code> na primeira coluna.
+Nas outras sub-tarefas deste módulo já se fala de velocidades — mas aí é legítimo, porque
+<code>MotorVel</code> e <code>gotoXY</code> são mesmo comandos de velocidade enviados aos motores,
+não linearizações.</div>`),
 
       /* ------------------------------------------------ 3. quiz conceptual */
       {

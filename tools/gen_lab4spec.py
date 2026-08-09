@@ -219,9 +219,15 @@ T(
     harness="%%USER%%\nX_e=[xr_e ; yr_e ; theta_r_e];\n",
     solution=F_MOTION,
     capture=["xr_e", "yr_e", "theta_r_e"],
-    starter="""% X(k+1) = f(X(k), U) — usa a velocidade linear v, a angular omega e o passo dt.
-% Atenção: as três linhas não são independentes; pensa em que valor de
-% theta_r_e cada uma deve usar.
+    starter="""% X(k+1) = f(X(k), q), com q = [delta_d ; delta_theta] — os DESLOCAMENTOS
+% deste ciclo. A partir das velocidades: delta_d = v*dt, delta_theta = omega*dt.
+% Trabalhar em deslocamentos (e nao em velocidades) e a convencao do professor,
+% e e o que faz as Jacobianas das sub-tarefas seguintes sairem certas.
+delta_d     = ;
+delta_theta = ;
+
+% Atencao: as tres linhas seguintes nao sao independentes; pensa em que valor
+% de theta_r_e cada uma deve usar.
 xr_e =
 yr_e =
 theta_r_e = """,
@@ -240,19 +246,19 @@ theta_r_e = """,
              set=dict(xr_e=0.0, yr_e=0.0, theta_r_e=0.5, v=1.5, omega=1.0, dt=0.1)),
     ],
     rules=[
-        dict(level="error", re=r"omega\s*\*\s*dt\s*/\s*2", msg="A posição deve ser integrada no ângulo <b>médio</b> do intervalo: <code>theta_r_e + omega*dt/2</code>, não no ângulo inicial."),
+        dict(level="error", re=r"omega\s*\*\s*dt\s*/\s*2|omega\s*\*\s*dt\s*\*\s*0?\.5|0?\.5\s*\*\s*omega\s*\*\s*dt|delta_\w*\s*/\s*2|dth\w*\s*/\s*2", msg="A posição integra-se no <b>ângulo médio</b> do intervalo: <code>theta_r_e + delta_theta/2</code> — que na escrita do professor é <code>theta_r_e + omega*dt/2</code>. Não uses o ângulo inicial."),
         dict(level="error", re=r"normalizeang", msg="O ângulo estimado tem de passar por <code>NormalizeAng</code>, senão sai fora de (−π, π]."),
     ],
     signalHints={
         "theta_r_e": "A orientação é a mais simples: <code>theta_r_e = NormalizeAng(theta_r_e + omega*dt)</code>. Se falha só no caso do ±π, falta-te o <code>NormalizeAng</code>.",
         "xr_e": "Repara na ordem das linhas: <code>xr_e</code> e <code>yr_e</code> têm de usar o <b>theta anterior</b>. Se atualizares <code>theta_r_e</code> primeiro, as posições ficam erradas.",
-        "yr_e": "Usa o ângulo médio do intervalo — <code>sin(theta_r_e + omega*dt/2)</code> — e multiplica tudo por <code>v*dt</code>.",
+        "yr_e": "O avanço do ciclo é <code>delta_d = v*dt</code>, aplicado na direção do ângulo médio: <code>yr_e + delta_d*sin(theta_r_e + delta_theta/2)</code>.",
     },
     hints=[
-        "Durante o intervalo dt o robô roda <code>omega*dt</code>. Integrar com o ângulo inicial dá erro de segunda ordem; o professor integra no <b>ângulo médio</b>, <code>theta_r_e + omega*dt/2</code>.",
-        "Deslocamento: <code>v*dt</code> na direção desse ângulo médio — componente x com <code>cos</code>, componente y com <code>sin</code>.",
+        "Pensa em <b>deslocamentos</b>, não em velocidades: neste ciclo o robô avança <code>delta_d = v*dt</code> e roda <code>delta_theta = omega*dt</code>. É esta a convenção do professor — e a natural para um filtro alimentado por odometria, que mede deslocamentos e não velocidades.",
+        "Integrar com o ângulo inicial dá erro de segunda ordem. Usa o <b>ângulo médio</b> do intervalo: <code>theta_r_e + delta_theta/2</code>.",
         "Atualiza <code>theta_r_e</code> <b>por último</b> (as duas linhas anteriores precisam do valor antigo) e envolve em <code>NormalizeAng</code>.",
-        "Solução: <code>xr_e=xr_e+v*cos(theta_r_e+omega*dt/2)*dt;</code>, o análogo com <code>sin</code> para y, e <code>theta_r_e=NormalizeAng(theta_r_e+omega*dt);</code>",
+        "Solução do professor, escrita em velocidades: <code>xr_e=xr_e+v*cos(theta_r_e+omega*dt/2)*dt;</code> — reconhece as peças: <code>v*(…)*dt</code> é o <code>delta_d</code> e <code>omega*dt/2</code> é o <code>delta_theta/2</code>. As duas escritas são a mesma coisa.",
     ],
 )
 
@@ -263,7 +269,10 @@ T(
     harness="%%USER%%\n",
     solution=F_GRADFX,
     capture=["grad_f_X"],
-    starter="""% df/dX : derivada de f(X,U) em ordem a [x ; y ; theta].  Matriz 3x3.
+    starter="""% df/dX : derivada de f em ordem ao ESTADO [x ; y ; theta].  Matriz 3x3.
+% Lembra-te de que f esta escrita em deslocamentos:
+%     x' = x + delta_d*cos(theta + delta_theta/2)
+% com delta_d = v*dt e delta_theta = omega*dt.
 grad_f_X = [ ];""",
     tests=[
         dict(name="Andamento em frente", set=dict(v=1.2, omega=0.0, dt=0.04, theta_r_e=0.3)),
@@ -273,14 +282,14 @@ grad_f_X = [ ];""",
         dict(name="Passo diferente", set=dict(v=1.5, omega=1.0, dt=0.1, theta_r_e=2.5)),
     ],
     rules=[
-        dict(level="error", re=r"omega\s*\*\s*dt\s*/\s*2", msg="As derivadas são avaliadas no mesmo ângulo médio usado em f: <code>theta_r_e + omega*dt/2</code>."),
+        dict(level="error", re=r"omega\s*\*\s*dt\s*/\s*2|omega\s*\*\s*dt\s*\*\s*0?\.5|0?\.5\s*\*\s*omega\s*\*\s*dt|delta_\w*\s*/\s*2|dth\w*\s*/\s*2", msg="As derivadas avaliam-se no mesmo ângulo médio usado em f: <code>theta_r_e + delta_theta/2</code>."),
     ],
     signalHints={
-        "grad_f_X": "A matriz é 3x3. As duas primeiras colunas são triviais (∂x/∂x = 1, ∂y/∂y = 1, o resto zero) porque x e y não dependem um do outro. Toda a informação está na <b>terceira coluna</b>: como é que x, y e theta mudam se o ângulo anterior mudar. Última linha: <code>[0 0 1]</code>.",
+        "grad_f_X": "A matriz é 3x3. As duas primeiras colunas são triviais (∂x/∂x = 1, ∂y/∂y = 1, o resto zero) porque x e y não dependem um do outro. Toda a informação está na <b>terceira coluna</b>: <code>∂x/∂theta = −delta_d·sin(·)</code> e <code>∂y/∂theta = +delta_d·cos(·)</code>. É por isso que aparece <code>v*dt</code> — não é um <i>dt</i> solto, é o <b>deslocamento</b> do ciclo. Última linha: <code>[0 0 1]</code>.",
     },
     hints=[
         "Deriva cada linha de f em ordem a x, y e theta. As dependências em x e y são a identidade.",
-        "Terceira coluna: <code>∂x/∂theta = -v*dt*sin(theta + omega*dt/2)</code> e <code>∂y/∂theta = +v*dt*cos(theta + omega*dt/2)</code>.",
+        "Terceira coluna: <code>∂x/∂theta = -delta_d*sin(theta + delta_theta/2)</code> e <code>∂y/∂theta = +delta_d*cos(theta + delta_theta/2)</code>. Na escrita do professor isso aparece como <code>-v*dt*sin(…)</code>: o <code>v*dt</code> <b>é</b> o <code>delta_d</code>.",
         "A orientação não depende de x nem de y e a sua derivada em ordem a si própria é 1 — última linha <code>[0 0 1]</code>.",
         "Solução: <code>grad_f_X=[1 0 -v*dt*sin(theta_r_e+omega*dt/2); 0 1 v*dt*cos(theta_r_e+omega*dt/2); 0 0 1];</code>",
     ],
@@ -288,12 +297,20 @@ grad_f_X = [ ];""",
 
 T(
     id="grad_f_u",
-    title="Jacobiano em ordem aos controlos — <code>grad_f_U</code>",
+    title="Jacobiano em ordem ao ruído da odometria — <code>grad_f_U</code> = ∂f/∂[Δd ; Δθ]",
     lang="matlab",
     harness="%%USER%%\n",
     solution=F_GRADFU,
     capture=["grad_f_U"],
-    starter="""% df/dU : derivada de f(X,U) em ordem a [v ; omega].  Matriz 3x2.
+    starter="""% ATENCAO ao que esta matriz deriva.
+% Apesar do nome 'grad_f_U', o professor NAO deriva em ordem a [v ; omega]:
+% deriva em ordem aos DESLOCAMENTOS q = [delta_d ; delta_theta].
+% Reescreve f nessas variaveis antes de derivar:
+%     x'     = x     + delta_d*cos(theta + delta_theta/2)
+%     y'     = y     + delta_d*sin(theta + delta_theta/2)
+%     theta' = theta + delta_theta
+% E por isso que NAO aparece nenhum dt solto: ele ja esta dentro do delta_d.
+% Matriz 3x2.
 grad_f_U = [ ];""",
     tests=[
         dict(name="Andamento em frente", set=dict(v=1.2, omega=0.0, dt=0.04, theta_r_e=0.3)),
@@ -303,16 +320,17 @@ grad_f_U = [ ];""",
         dict(name="Passo diferente", set=dict(v=1.5, omega=1.0, dt=0.1, theta_r_e=2.5)),
     ],
     rules=[
-        dict(level="error", re=r"0\.5|/\s*2", msg="A derivada em ordem a omega apanha o <code>omega*dt/2</code> por dentro do seno/cosseno — daí aparecer um fator <code>0.5</code>."),
+        dict(level="error", re=r"0\.5|/\s*2", msg="A derivada em ordem a <code>delta_theta</code> apanha o <code>delta_theta/2</code> que está dentro do seno/cosseno — daí o fator <code>1/2</code>."),
     ],
     signalHints={
-        "grad_f_U": "Matriz 3x2 (três estados, dois controlos). Coluna 1 = derivada em ordem a <b>v</b>: como v multiplica dt, sobra <code>cos(·)</code> e <code>sin(·)</code>, e a orientação não depende de v (0). Coluna 2 = derivada em ordem a <b>omega</b>: pela regra da cadeia com <code>omega*dt/2</code> lá dentro, aparece o fator <code>v*dt*0.5</code>; a última entrada é <code>dt</code>… ou 1, consoante a convenção — usa a do professor.",
+        "grad_f_U": "Matriz 3x2: três estados, duas fontes de ruído. <b>Coluna do Δd</b> — derivando <code>x' = x + Δd·cos(θ+Δθ/2)</code> em ordem a Δd sobra <code>cos(θ+Δθ/2)</code>, <b>sem dt</b>, porque o dt já está dentro do Δd; e a orientação não depende de Δd, logo 0. <b>Coluna do Δθ</b> — pela regra da cadeia, <code>∂x'/∂Δθ = −Δd·½·sin(·)</code>, que na escrita do professor é <code>-v*dt*0.5*sin(·)</code>; e <code>∂θ'/∂Δθ = 1</code>, não dt, precisamente por se derivar em ordem ao deslocamento.",
     },
     hints=[
-        "É a mesma f, agora derivada em ordem a v e a omega. Fica 3x2.",
-        "Coluna do v: <code>[cos(theta+omega*dt/2) ; sin(theta+omega*dt/2) ; 0]</code> — sem o dt, porque o professor absorve-o em Q.",
-        "Coluna do omega: pela regra da cadeia, <code>∂/∂omega [v*cos(theta+omega*dt/2)*dt] = -v*dt*0.5*sin(theta+omega*dt/2)</code>.",
-        "Solução: <code>grad_f_U=[cos(a) -v*dt*0.5*sin(a); sin(a) v*dt*0.5*cos(a); 0 1];</code> com <code>a = theta_r_e+omega*dt/2</code>.",
+        "Antes de derivar, reescreve f em <b>deslocamentos</b>: <code>x' = x + Δd·cos(θ + Δθ/2)</code> e <code>θ' = θ + Δθ</code>. É em ordem a Δd e Δθ que se deriva — não a v e omega.",
+        "Coluna do Δd: <code>[cos(θ+Δθ/2) ; sin(θ+Δθ/2) ; 0]</code>. Não há dt nenhum, porque ele já está dentro do Δd.",
+        "Coluna do Δθ: regra da cadeia sobre o <code>Δθ/2</code> de dentro do cosseno, <code>∂x'/∂Δθ = −Δd·½·sin(θ+Δθ/2)</code>. E <code>∂θ'/∂Δθ = 1</code>.",
+        "Solução: <code>grad_f_U=[cos(a) -v*dt*0.5*sin(a); sin(a) v*dt*0.5*cos(a); 0 1];</code> com <code>a = theta_r_e+omega*dt/2</code>. Reconhece as peças: <code>v*dt</code> é o Δd, <code>omega*dt</code> é o Δθ.",
+        "Se derivasses mesmo em ordem a [v ; omega] obterias esta matriz inteira multiplicada por dt, e um <code>dt</code> no canto inferior. Também estaria correto — mas então Q teria de ser dividido por dt² para dar o mesmo P. O professor escolheu a versão em deslocamentos.",
     ],
 )
 
@@ -345,13 +363,13 @@ P = ;""",
     ],
     rules=[
         dict(level="error", re=r"grad_f_x\s*'", msg="Falta transpor: a propagação é <code>F·P·F'</code>, com apóstrofo."),
-        dict(level="error", re=r"grad_f_u\s*\*\s*q", msg="O termo do ruído é <code>grad_f_U*Q*grad_f_U'</code> — o Q vive no espaço dos <b>controlos</b> e tem de ser levado para o espaço do estado."),
+        dict(level="error", re=r"grad_f_u\s*\*\s*q", msg="O termo do ruído é <code>grad_f_U*Q*grad_f_U'</code> — o Q vive no espaço dos <b>deslocamentos</b> [Δd ; Δθ] e tem de ser levado para o espaço do estado."),
     ],
     signalHints={
-        "P": "A fórmula é <code>P = F·P·F' + G·Q·G'</code>, com F = <code>grad_f_X</code> e G = <code>grad_f_U</code>. Erros comuns: esquecer um apóstrofo, ou somar Q diretamente a P (as dimensões nem batem certo — Q é 2x2 e P é 3x3).",
+        "P": "A fórmula é <code>P = F·P·F' + G·Q·G'</code>, com F = <code>grad_f_X</code> e G = <code>grad_f_U</code>. O G é o que leva a incerteza dos <b>deslocamentos</b> [Δd ; Δθ] para o espaço do estado. Erros comuns: esquecer um apóstrofo, ou somar Q diretamente a P (as dimensões nem batem certo — Q é 2x2 e P é 3x3).",
     },
     hints=[
-        "São dois termos: o que propaga a incerteza que já tinhas, e o que injeta a incerteza nova vinda do ruído dos controlos.",
+        "São dois termos: o que propaga a incerteza que já tinhas, e o que injeta a incerteza nova vinda do erro de <b>odometria</b> deste ciclo (o erro em Δd e Δθ).",
         "Cada termo tem a forma <b>sanduíche</b>: matriz · covariância · matriz transposta.",
         "Solução: <code>P = grad_f_X * P * grad_f_X' + grad_f_U*Q*grad_f_U';</code>",
     ],
@@ -515,9 +533,11 @@ T(
     harness=FULL_HARNESS,
     solution=F_PQ,
     capture=["P", "Q", "erro_medio", "erro_max"],
-    starter="""% P : covariância INICIAL da estimativa (3x3).  Quanto é que confias
-%     na pose inicial? O robô arranca em (2, -2) mas o filtro assume (2.5, -2.5).
-% Q : covariância do ruído do modelo de movimento (2x2), no espaço [v ; omega].
+    starter="""% P : covariancia INICIAL da estimativa (3x3).  Quanto e que confias
+%     na pose inicial? O robo arranca em (2, -2) mas o filtro assume (2.5, -2.5).
+% Q : covariancia do ruido do modelo de movimento (2x2), no espaco dos
+%     DESLOCAMENTOS [delta_d ; delta_theta] — erro em metros e em radianos
+%     POR CICLO, nao por segundo.
 P = ;
 Q = ;""",
     tests=[
@@ -526,7 +546,7 @@ Q = ;""",
                if(!Array.isArray(cap.P) || cap.P.length!==3 || cap.P[0].length!==3)
                  return "P tem de ser 3x3 (uma variância por componente do estado).";
                if(!Array.isArray(cap.Q) || cap.Q.length!==2 || cap.Q[0].length!==2)
-                 return "Q tem de ser 2x2 — vive no espaço dos controlos [v ; omega], não no do estado.";
+                 return "Q tem de ser 2x2 — vive no espaço dos deslocamentos [delta_d ; delta_theta], não no do estado.";
                for(var i=0;i<3;i++) if(cap.P[i][i] <= 0) return "A diagonal de P tem de ser positiva (são variâncias).";
                for(var j=0;j<2;j++) if(cap.Q[j][j] <= 0) return "A diagonal de Q tem de ser positiva.";
                return true;
@@ -551,7 +571,8 @@ Q = ;""",
     hints=[
         "Não há uma resposta única: qualquer sintonia razoável passa. O que se avalia é o <b>desempenho</b> do filtro ao fim de 300 iterações.",
         "P inicial diz quanto confias na pose de arranque. O filtro começa em (2.5, −2.5) e o robô está em (2, −2): o erro inicial é ~0.7 m. Um P demasiado pequeno diz ao filtro «tenho a certeza» e ele demora imenso a corrigir.",
-        "Q é a incerteza do <b>modelo de movimento</b>, no espaço [v ; omega]. Q grande = confio pouco no modelo e muito nas medidas (converge depressa, mas a estimativa fica ruidosa). Q pequeno = o contrário.",
+        "Q é a incerteza do <b>modelo de movimento</b>, no espaço dos deslocamentos [Δd ; Δθ]. Q grande = confio pouco no modelo e muito nas medidas (converge depressa, mas a estimativa fica ruidosa). Q pequeno = o contrário.",
+        "Lê o Q do professor em unidades: <code>Q=[0.0005^2 0; 0 0.0005^2]</code> diz «em cada ciclo de 40 ms erro cerca de 0.5 mm no avanço e 0.5 mrad na rotação» — plausível para odometria. Se fosse ruído de <i>velocidade</i>, seriam 0.5 mm/s, otimista de mais. É mais uma confirmação de que a leitura certa é em deslocamentos.",
         "O professor usa <code>P=eye(3)*1e-2;</code> e <code>Q=[0.0005^2 0; 0 0.0005^2];</code>. Experimenta multiplicar e dividir por 100 e observa o efeito nos dois indicadores.",
     ],
 )

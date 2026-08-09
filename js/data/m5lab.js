@@ -83,8 +83,19 @@ metros; <code>WheelDist</code> é a distância entre as rodas.</p>
   <li>o <b>avanço do centro</b> do robô — a média das duas rodas;</li>
   <li>a <b>rotação</b> — a diferença entre as rodas, a dividir pela distância entre elas.</li>
 </ul>
+
+<div class="labctx"><b>Nota de notação.</b> Repara que o que sai dos encoders são
+<b>deslocamentos</b> — o professor chama-lhes <code>d</code> e <code>delta_theta</code> — e não
+velocidades. É a mesma convenção da Lab 4: lá viste <code>Δd = v·dt</code> e <code>Δθ = ω·dt</code>
+porque o modelo era escrito em velocidades, mas o objeto com significado era sempre o
+deslocamento por ciclo. Aqui isso é literal: os encoders contam impulsos, e impulsos são
+deslocamento. Guarda esta ideia para a sub-tarefa 5.6.7 — o Jacobiano <code>grad_f_q</code>
+deriva em ordem a estes <code>[Δd ; Δθ]</code>, e é por isso que não tem nenhum <code>dt</code>
+solto.</div>
+
 <p>Depois é a mesma integração da Lab 4: o deslocamento aplica-se no <b>ângulo médio</b> do
-intervalo, não no inicial. Há um teste que faz o robô rodar para lá de ±π, de propósito.</p>
+intervalo (<code>theta + delta_theta/2</code>), não no inicial. Há um teste que faz o robô rodar
+para lá de ±π, de propósito.</p>
 <p>Repara que isto é a predição «crua», sem covariância — é o que o EKF vai depois envolver.</p>`),
 
       /* --------------------------------------------------- 2. quiz */
@@ -189,7 +200,15 @@ Só tens de reescrever as entradas que dependem do estado, e depois ler o bloco 
 <code>RangeToMatrix</code>.</p>
 <p>Em <code>df/dX</code> só mudam duas entradas — as da terceira coluna, primeiras duas linhas.
 Em <code>df/dq</code> mudam quatro. Todas avaliadas no ângulo médio,
-<code>theta + 0.5·omega·dt</code>.</p>
+<code>theta + Δθ/2</code>, que no código do professor se escreve <code>theta + 0.5·omega·dt</code>.</p>
+
+<div class="labctx"><b>Repara no nome da matriz: <code>grad_f_q</code>, não <code>grad_f_U</code>.</b>
+Aqui o professor é explícito — <i>q</i> é o vetor de ruído de processo, os <b>deslocamentos</b>
+<code>[Δd ; Δθ]</code>, e não os controlos. É a mesma matriz que na Lab 4 se chamava
+<code>grad_f_U</code> (nome enganador, como viste no M4.7.4). Nas expressões, onde lês
+<code>vlin*dt</code> lê <b>Δd</b> e onde lês <code>omega*dt</code> lê <b>Δθ</b>: a coluna do Δd
+não tem <code>dt</code> nenhum e a entrada (3,2) é <b>1</b>, precisamente porque se deriva em
+ordem ao deslocamento.</div>
 <p>A propagação faz-se por passos, porque não há operadores:</p>
 <pre class="pas">P := MMult(grad_f_X, P);
 P := MMult(P, Mtran(grad_f_X));
@@ -218,10 +237,15 @@ e as variáveis sincronizadas.</p>`),
       /* --------------------------------------------------- 8. sintonia */
       code("tuning",
         "Sub-tarefa 5.6.9 — sintonia de <code>Q</code> e <code>R</code>",
-        "Escreve o <code>SetupNoise</code>: preenche <code>Q</code> (2×2) e <code>R</code> (2×2) a partir dos desvios padrão declarados no topo do ficheiro.",
+        "Escreve o <code>SetupNoise</code>: preenche <code>Q</code> (2×2, no espaço dos deslocamentos <code>[Δd ; Δθ]</code>) e <code>R</code> (2×2, no espaço das medidas) a partir dos desvios padrão declarados no topo do ficheiro.",
         `<p>Como na Lab 4, <b>não se compara com o professor</b>: o hub corre o filtro completo
-durante 300 ciclos — robô a andar em círculo, três postes visíveis, ruído injetado com os desvios
-padrão declarados — e mede se a estimativa acompanha o robô.</p>
+durante 300 ciclos — robô a andar em círculo, três postes visíveis, ruído injetado nos
+<b>deslocamentos</b> de cada ciclo — e mede se a estimativa acompanha o robô.</p>
+<p>Repara na coerência que se exige aqui: o <code>grad_f_q</code> que escreveste na sub-tarefa
+anterior deriva em ordem a <code>[Δd ; Δθ]</code>, portanto o <code>Q</code> que o acompanha na
+sanduíche <code>G·Q·G'</code> tem de ser a covariância <b>desses mesmos deslocamentos</b>. Se
+pensares em Q como ruído de velocidade, as unidades deixam de bater certo com o G — e é esse o
+erro conceptual que a sub-tarefa 4.7.4 da Lab 4 discute em detalhe.</p>
 <p>Critérios: erro médio nas últimas 100 iterações abaixo de <b>4 cm</b>, e erro máximo abaixo de
 <b>12 cm</b>. A solução do professor fica em ~3.4 mm de erro médio, portanto há bastante folga —
 qualquer sintonia sensata passa.</p>

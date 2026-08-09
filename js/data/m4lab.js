@@ -67,13 +67,28 @@ O <code>NormalizeAng</code> e o <code>ode45</code> já estão disponíveis aqui 
       /* --------------------------------------------------- 1. motion model */
       code("motion",
         "Sub-tarefa 4.7.2 — modelo de movimento",
-        "Escreve a propagação do estado estimado: a partir de <code>(xr_e, yr_e, theta_r_e)</code>, da velocidade linear <code>v</code>, da angular <code>omega</code> e do passo <code>dt</code>, calcula a pose no instante seguinte.",
-        `<p>É a fase de <b>predição</b> do EKF: <code>X(k+1) = f(X(k), U)</code>. Não há aqui nenhuma
-medida — só o modelo cinemático do robô diferencial a extrapolar para onde ele deve ter ido.</p>
-<p>O detalhe que separa uma implementação boa de uma medíocre: durante o intervalo <code>dt</code> o
-robô também <b>roda</b>. Integrar o deslocamento com o ângulo <i>inicial</i> introduz um erro de
-segunda ordem que se acumula em cada iteração. O professor integra no <b>ângulo médio</b> do
-intervalo.</p>
+        "Escreve a propagação do estado estimado: a partir de <code>(xr_e, yr_e, theta_r_e)</code> e dos deslocamentos deste ciclo, calcula a pose no instante seguinte.",
+        `<p>É a fase de <b>predição</b> do EKF: <code>X(k+1) = f(X(k), q)</code>. Não há aqui nenhuma
+medida — só o modelo cinemático a extrapolar para onde o robô deve ter ido.</p>
+
+<div class="labctx"><b>Convenção de notação, e vale a pena fixá-la já.</b> Ao longo de toda a
+cadeia — aqui, nos Jacobianos e no Q — o professor raciocina em <b>deslocamentos por ciclo</b>,
+não em velocidades:
+<pre class="pas">Δd = v·dt        (avanço no ciclo, em metros)
+Δθ = ω·dt        (rotação no ciclo, em radianos)</pre>
+No código dele isto aparece escrito como <code>v*…*dt</code> e <code>omega*dt</code>, mas o objeto
+com significado é sempre o deslocamento. Faz sentido: um filtro alimentado por <b>odometria</b>
+recebe deslocamentos — os encoders contam impulsos, não velocidades. Escrever <code>delta_d</code>
+e <code>delta_theta</code> como variáveis auxiliares é boa ideia, e é o que evita o tropeção
+clássico na sub-tarefa 4.7.4.</div>
+
+<p>Com essa notação o modelo é simplesmente:</p>
+<pre class="pas">x'     = x     + Δd·cos(θ + Δθ/2)
+y'     = y     + Δd·sin(θ + Δθ/2)
+θ'     = θ     + Δθ</pre>
+<p>O detalhe que separa uma implementação boa de uma medíocre é o <code>Δθ/2</code>: durante o
+ciclo o robô também <b>roda</b>, e integrar o deslocamento com o ângulo <i>inicial</i> introduz um
+erro de segunda ordem que se acumula em cada iteração.</p>
 <p>Cuidado com a <b>ordem</b> das três linhas: duas delas precisam do valor antigo da orientação.</p>`),
 
       /* --------------------------------------------------- 2. grad_f_X */
@@ -83,18 +98,43 @@ intervalo.</p>
         `<p>É aqui que o filtro deixa de ser linear e passa a ser <i>estendido</i>: como não há uma
 matriz de transição F, lineariza-se f em torno da estimativa atual.</p>
 <p>Pensa coluna a coluna: «se o x anterior mudar 1, quanto muda o x novo? e o y? e o theta?».
-Duas das colunas são triviais. A terceira é a interessante — é a que diz que um erro na
-<b>orientação</b> se transforma em erro de <b>posição</b> proporcional à distância percorrida.
-É exatamente por isso que a orientação é a variável mais crítica em odometria.</p>`),
+Duas das colunas são triviais. A terceira é a interessante:</p>
+<pre class="pas">∂x'/∂θ = −Δd·sin(θ + Δθ/2)
+∂y'/∂θ = +Δd·cos(θ + Δθ/2)</pre>
+<p>Repara no fator: é o <b>deslocamento</b> Δd, não um <code>dt</code> avulso. No código do
+professor lês <code>-v*dt*sin(…)</code>, que é exatamente o mesmo — <code>v*dt</code> <i>é</i> o Δd.</p>
+<p>E é isto que diz que um erro na <b>orientação</b> se transforma em erro de <b>posição</b>
+proporcional à distância percorrida. Um robô que ande 10 m com 1° de erro de orientação acumula
+~17 cm de erro lateral. É por isso que a orientação é a variável mais crítica em odometria.</p>`),
 
       /* --------------------------------------------------- 3. grad_f_U */
       code("grad_f_u",
-        "Sub-tarefa 4.7.4 — Jacobiano <code>grad_f_U</code>",
-        "Escreve a matriz 3×2 <code>grad_f_U = df/dU</code>: a derivada do modelo de movimento em ordem aos controlos <code>[v ; omega]</code>.",
-        `<p>Serve para levar o ruído dos <b>atuadores</b> (que vive no espaço 2D de [v ; omega]) para o
-espaço 3D do estado. É o G da expressão <code>G·Q·G'</code>.</p>
-<p>Na coluna do <code>omega</code> aparece um fator <code>0.5</code>: vem da regra da cadeia, porque
-o <code>omega</code> também está lá dentro, no <code>omega*dt/2</code> do ângulo médio.</p>`),
+        "Sub-tarefa 4.7.4 — Jacobiano <code>grad_f_U</code> = ∂f/∂[Δd ; Δθ]",
+        "Escreve a matriz 3×2 <code>grad_f_U</code>: a derivada do modelo de movimento em ordem aos <b>deslocamentos</b> <code>[Δd ; Δθ]</code>.",
+        `<p>Serve para levar o ruído da <b>odometria</b> — que vive no espaço 2D dos deslocamentos —
+para o espaço 3D do estado. É o G da expressão <code>G·Q·G'</code>.</p>
+
+<div class="labctx"><b>Atenção ao nome.</b> O professor chama-lhe <code>grad_f_U</code> e comenta
+<code>% grad_f_U=df/dU</code>, o que sugere derivada em ordem aos <i>controlos</i> [v ; ω]. Mas não
+é isso que a matriz dele é: é <b>∂f/∂[Δd ; Δθ]</b>. Na Lab 5, no SimTwo, ele corrige o nome e
+chama-lhe <code>grad_f_q</code> — <i>q</i> de ruído de processo. É essa a leitura certa.</div>
+
+<h4>Porque é que não aparece nenhum <code>dt</code>?</h4>
+<p>É a pergunta natural: se <code>x' = x + v·dt·cos(·)</code>, derivar em ordem a <code>v</code>
+devia deixar um <code>dt</code> lá. E deixa — só que não é em ordem a <code>v</code> que se deriva.
+Reescreve f em deslocamentos e faz as contas:</p>
+<pre class="pas">x' = x + Δd·cos(θ + Δθ/2)
+
+∂x'/∂Δd = cos(θ + Δθ/2)        ← sem dt: ele já está DENTRO do Δd
+∂x'/∂Δθ = −Δd·½·sin(θ + Δθ/2)  ← o Δd reaparece, mas como resto, não como fator de derivação
+∂θ'/∂Δθ = 1                    ← 1, e não dt, pela mesma razão</pre>
+<p>Bate certo com a matriz do professor, entrada a entrada.</p>
+<p><b>E se derivasses mesmo em ordem a [v ; ω]?</b> Obterias esta matriz inteira multiplicada por
+<code>dt</code>, e um <code>dt</code> no canto inferior. Também estaria correto — mas como
+<code>G_vel = dt·G_desl</code>, a parcela <code>G·Q·G'</code> só dá o mesmo se usares
+<code>Q_vel = Q_desl/dt²</code>. As duas formulações produzem exatamente o mesmo <code>P</code>;
+o que muda é o <b>significado de Q</b>. O professor escolheu a versão em deslocamentos, e é por
+isso que o Q dele se lê em «metros por ciclo», não em «metros por segundo».</p>`),
 
       /* --------------------------------------------------- 4. quiz */
       {
@@ -106,17 +146,17 @@ o <code>omega</code> também está lá dentro, no <code>omega*dt/2</code> do ân
             q: "Porque é que <code>Q</code> é 2×2 e não 3×3, se o estado tem três componentes?",
             options: [
               "Por economia de cálculo — 3×3 daria o mesmo resultado mais devagar.",
-              "Porque Q descreve o ruído dos <b>controlos</b> [v ; omega], e é o <code>grad_f_U</code> que o transporta para o espaço do estado.",
+              "Porque Q descreve o ruído dos <b>deslocamentos</b> [Δd ; Δθ] medidos pela odometria, e é o <code>grad_f_U</code> que o transporta para o espaço do estado.",
               "Porque a orientação não tem ruído.",
               "Porque Q só modela o ruído em x e y."
             ],
             answer: 1,
             hint: "Olha para as dimensões de <code>grad_f_U*Q*grad_f_U'</code>: 3×2 · 2×2 · 2×3.",
-            explain: "Q vive no espaço dos controlos. O produto <code>G·Q·G'</code> dá uma matriz 3×3, que é a contribuição do ruído dos atuadores para a incerteza do estado. Se escrevesses Q diretamente 3×3 estarias a modelar ruído de processo genérico — outra formulação, com outro significado."
+            explain: "Q vive no espaço dos deslocamentos por ciclo. O produto <code>G·Q·G'</code> dá uma matriz 3×3, que é a contribuição do erro de odometria para a incerteza do estado. Se escrevesses Q diretamente 3×3 estarias a modelar ruído de processo genérico — outra formulação, com outro significado."
           },
           {
             kind: "mcq",
-            q: "Na terceira coluna de <code>grad_f_X</code> aparece <code>-v*dt*sin(·)</code>. O que é que isso significa fisicamente?",
+            q: "Na terceira coluna de <code>grad_f_X</code> aparece <code>-v*dt*sin(·)</code>, ou seja <code>−Δd·sin(·)</code>. O que é que isso significa fisicamente?",
             options: [
               "Que o robô perde velocidade quando roda.",
               "Que um erro na orientação estimada se converte em erro de posição, tanto maior quanto mais o robô andar nesse ciclo.",
@@ -124,7 +164,7 @@ o <code>omega</code> também está lá dentro, no <code>omega*dt/2</code> do ân
               "Que a orientação depende da posição em x."
             ],
             answer: 1,
-            hint: "O fator é <code>v*dt</code> — a distância percorrida no ciclo.",
+            hint: "O fator é <code>Δd = v·dt</code> — a distância percorrida no ciclo.",
             explain: "É a razão pela qual a incerteza angular é a mais perigosa: multiplica-se pela distância percorrida e contamina x e y. Um robô que ande 10 m com 1° de erro de orientação acumula ~17 cm de erro lateral."
           },
           {
@@ -142,7 +182,7 @@ o <code>omega</code> também está lá dentro, no <code>omega*dt/2</code> do ân
         `<p>Uma linha só, mas é a que mais gente escreve mal. Duas parcelas:</p>
 <ul>
   <li>a incerteza que já tinhas, transportada pelo modelo — em <b>sanduíche</b> com o Jacobiano do estado;</li>
-  <li>a incerteza nova injetada pelo ruído dos controlos — em sanduíche com o Jacobiano dos controlos.</li>
+  <li>a incerteza nova injetada pelo erro de <b>odometria</b> deste ciclo (o erro em Δd e Δθ) — em sanduíche com o <code>grad_f_U</code>.</li>
 </ul>
 <p>Os testes incluem um caso com <code>P</code> não diagonal, de propósito: com P diagonal e Jacobianos
 simples, esquecer uma transposição pode passar despercebido. Com correlações cruzadas, não passa.</p>`),
@@ -218,10 +258,15 @@ beacons a alternarem a cada 50 ciclos) e mede o desempenho:</p>
   <li><b>P inicial</b> — quanta confiança tens na pose de arranque. O robô começa em (2, −2) mas o
   filtro assume (2.5, −2.5): há 0.7 m de erro à partida. Um P demasiado pequeno diz «tenho a
   certeza» e o filtro rejeita as medidas que o tentam corrigir.</li>
-  <li><b>Q</b> — quanta confiança tens no modelo de movimento. Q grande: converge depressa mas a
-  estimativa fica ruidosa. Q pequeno: estimativa suave mas lenta a reagir, e capaz de nunca apanhar
-  o robô.</li>
+  <li><b>Q</b> — quanta confiança tens no modelo de movimento, no espaço dos <b>deslocamentos</b>
+  [Δd ; Δθ]. Q grande: converge depressa mas a estimativa fica ruidosa. Q pequeno: estimativa suave
+  mas lenta a reagir, e capaz de nunca apanhar o robô.</li>
 </ul>
+<p><b>Lê o Q do professor em unidades</b> — é o melhor teste de que percebeste a convenção.
+<code>Q = diag(0.0005², 0.0005²)</code> diz: «em cada ciclo de 40 ms erro cerca de 0.5 mm no avanço
+e 0.5 mrad na rotação». Plausível para odometria. Se fosse ruído de <i>velocidade</i> seriam
+0.5 mm/s — otimista de mais para ser credível. É mais uma confirmação de que a leitura certa é
+em deslocamentos por ciclo, e não em velocidades.</p>
 <p>Faz o que o professor sugere nas dicas: parte dos valores dele, multiplica e divide por 100, e
 observa o efeito nos dois indicadores. A leitura desses <i>trade-offs</i> é o que se pergunta no exame.</p>`),
 

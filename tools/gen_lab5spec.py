@@ -151,11 +151,11 @@ check("rSensA := Power(sensA_stddev,2);", "rSensA")
 
 # harness de simulação para a tarefa de sintonia
 SIM_HARNESS = """
-procedure SimStep(vt, wt: double);
+procedure SimStep(dd, dth: double);
 begin
-  truetheta := NormalizeAngle(truetheta + wt*dt);
-  truex := truex + vt*dt*cos(truetheta - 0.5*wt*dt);
-  truey := truey + vt*dt*sin(truetheta - 0.5*wt*dt);
+  truetheta := NormalizeAngle(truetheta + dth);
+  truex := truex + dd*cos(truetheta - 0.5*dth);
+  truey := truey + dd*sin(truetheta - 0.5*dth);
 end;
 
 procedure MakeMeasurements;
@@ -173,7 +173,7 @@ end;
 
 procedure RunSim;
 var i, j: integer;
-    vt, wt, e: double;
+    delta_d_true, delta_th_true, delta_d, delta_theta, e: double;
 begin
   SetupNoise;
   truex := 0.5; truey := 0.5; truetheta := 0;
@@ -183,14 +183,20 @@ begin
   XR := Mzeros(3,1);
   errsum := 0; errmax := 0; nerr := 0;
   for i := 1 to 300 do begin
-    vt := 0.20;
-    wt := 0.30;
-    SimStep(vt, wt);
-    vlin  := vt + RandG(0, lin_stddev);
-    omega := wt + RandG(0, omega_stddev);
-    x := x + vlin*dt*cos(theta + 0.5*omega*dt);
-    y := y + vlin*dt*sin(theta + 0.5*omega*dt);
-    theta := NormalizeAngle(theta + omega*dt);
+    // deslocamentos verdadeiros deste ciclo
+    delta_d_true  := 0.20*dt;
+    delta_th_true := 0.30*dt;
+    SimStep(delta_d_true, delta_th_true);
+    // odometria: os mesmos deslocamentos, com ruido
+    delta_d     := delta_d_true  + RandG(0, lin_stddev*dt);
+    delta_theta := delta_th_true + RandG(0, omega_stddev*dt);
+    // predicao (o mesmo que faz o predictPosition)
+    x := x + delta_d*cos(theta + 0.5*delta_theta);
+    y := y + delta_d*sin(theta + 0.5*delta_theta);
+    theta := NormalizeAngle(theta + delta_theta);
+    // o EKF_MotionModel do professor le vlin e omega, portanto convertemos
+    vlin  := delta_d/dt;
+    omega := delta_theta/dt;
     EKF_MotionModel;
     MakeMeasurements;
     for j := 1 to NBEACONS do EKF_Update(j);
@@ -387,15 +393,15 @@ end;""",
         dict(level="error", re=r"0\.5\s*\*\s*omega\s*\*\s*dt|omega\s*\*\s*dt\s*/\s*2", msg="As derivadas avaliam-se no ângulo médio do intervalo, <code>theta + 0.5*omega*dt</code>."),
     ],
     signalHints={
-        "G.grad_f_x": "Só duas entradas de <code>df/dX</code> mudam a cada ciclo — as da terceira coluna, linhas 1 e 2 (células (42,3) e (43,3)): <code>-vlin*dt*sin(theta+0.5*omega*dt)</code> e <code>vlin*dt*cos(theta+0.5*omega*dt)</code>. O resto da matriz é a identidade e já foi escrito na Initialize.",
-        "G.grad_f_q": "<code>df/dq</code> é 3x2. Coluna do v: <code>[cos(a); sin(a); 0]</code>. Coluna do omega: <code>[-0.5*vlin*dt*sin(a); 0.5*vlin*dt*cos(a); 1]</code>, com <code>a = theta+0.5*omega*dt</code>. Escreve as células (42,5), (42,6), (43,5) e (43,6).",
+        "G.grad_f_x": "Só duas entradas de <code>df/dX</code> mudam a cada ciclo — as da terceira coluna, linhas 1 e 2 (células (42,3) e (43,3)): <code>-vlin*dt*sin(theta+0.5*omega*dt)</code> e <code>vlin*dt*cos(theta+0.5*omega*dt)</code>, ou seja <code>∓Δd·sin/cos(theta + Δθ/2)</code>. O resto da matriz é a identidade e já foi escrito na Initialize.",
+        "G.grad_f_q": "Repara no nome que o professor lhe dá: <b>grad_f_q</b> — <i>q</i> de ruído de processo. É <code>∂f/∂[Δd ; Δθ]</code>, derivada em ordem aos <b>deslocamentos</b> e não às velocidades. Coluna do Δd: <code>[cos(a); sin(a); 0]</code> — sem dt, porque ele já está dentro do Δd. Coluna do Δθ: <code>[-0.5*vlin*dt*sin(a); 0.5*vlin*dt*cos(a); 1]</code>, onde <code>vlin*dt</code> é o Δd e a última entrada é <b>1</b>, não dt. Com <code>a = theta+0.5*omega*dt</code>, ou seja <code>theta + Δθ/2</code>. Escreve as células (42,5), (42,6), (43,5) e (43,6).",
         "G.p": "A fórmula é <code>P = F·P·F' + G·Q·G'</code>. Em SimTwo faz-se por passos: <code>P := MMult(grad_f_X, P); P := MMult(P, Mtran(grad_f_X)); P := Madd(P, MMult(grad_f_q, MMult(Q, Mtran(grad_f_q))));</code>",
         "G.xr": "<code>XR</code> lê-se das células (33,1) a (35,1) depois de lá escreveres x, y e theta.",
     },
     hints=[
         "A folha de cálculo do SimTwo é o teu «bloco de notas» das matrizes: escreves com <code>SetRCValue</code>, lês com <code>RangeToMatrix(linha, coluna, nLinhas, nColunas)</code>.",
         "A Initialize já lá deixou a identidade em df/dX e o 1 em df/dq(3,2) — só tens de reescrever as entradas que dependem do estado.",
-        "As derivadas são as mesmas da Lab 4, avaliadas em <code>theta + 0.5*omega*dt</code>.",
+        "As derivadas são as mesmas da Lab 4, em ordem aos deslocamentos [Δd ; Δθ] e avaliadas no ângulo médio <code>theta + Δθ/2</code> — que aqui se escreve <code>theta + 0.5*omega*dt</code>. Lembra-te: <code>vlin*dt</code> é o Δd e <code>omega*dt</code> é o Δθ.",
         "Propagação em três passos com MMult/Mtran/Madd, exatamente como <code>F·P·F' + G·Q·G'</code>.",
     ],
 )
@@ -647,7 +653,8 @@ T(
     starter="""procedure SetupNoise;
 var qV, qOmega, rSensD, rSensA: double;
 begin
-  // Q (2x2) : incerteza do modelo de movimento, no espaco [v ; omega]
+  // Q (2x2) : incerteza do modelo de movimento, no espaco dos DESLOCAMENTOS
+  //           [delta_d ; delta_theta] — o mesmo espaco em que o grad_f_q deriva
   // R (2x2) : incerteza das medidas, no espaco [distancia ; angulo]
   // As constantes lin_stddev, omega_stddev, sensD_stddev e sensA_stddev
   // estao declaradas no topo do ficheiro. Sao DESVIOS PADRAO.
@@ -664,7 +671,7 @@ end;""",
         dict(kind="assert", name="Q e R bem formadas (2x2, diagonal positiva)",
              check_js="""function(cap, b){
                var Q = b.G.q, R = b.G.r;
-               if(!Q || Q.r!==2 || Q.c!==2) return "Q tem de ser uma matriz 2x2 (espaco [v ; omega]).";
+               if(!Q || Q.r!==2 || Q.c!==2) return "Q tem de ser uma matriz 2x2 (espaco dos deslocamentos [delta_d ; delta_theta]).";
                if(!R || R.r!==2 || R.c!==2) return "R tem de ser uma matriz 2x2 (espaco [distancia ; angulo]).";
                if(!(Q.d[0]>0 && Q.d[3]>0)) return "A diagonal de Q tem de ser positiva — sao variancias.";
                if(!(R.d[0]>0 && R.d[3]>0)) return "A diagonal de R tem de ser positiva — sao variancias.";
@@ -701,7 +708,7 @@ end;""",
     hints=[
         "Ao contrário das outras sub-tarefas, aqui não se compara com o professor: corre-se o filtro 300 ciclos e mede-se se ele acompanha o robô.",
         "As constantes já lá estão: <code>lin_stddev</code>, <code>omega_stddev</code>, <code>sensD_stddev</code>, <code>sensA_stddev</code>. São desvios padrão — Q e R querem <b>variâncias</b>.",
-        "Q é diagonal 2x2 no espaço dos controlos [v ; omega]; R é diagonal 2x2 no espaço das medidas [distância ; ângulo].",
+        "Q é diagonal 2x2 no espaço dos <b>deslocamentos</b> [Δd ; Δθ] — é o espaço em que o <code>grad_f_q</code> deriva. R é diagonal 2x2 no espaço das medidas [distância ; ângulo].",
         "Solução do professor: <code>qV := Power(lin_stddev,2);</code> e análogos, depois <code>Q := Mzeros(2,2); Msetv(Q,0,0,qV); Msetv(Q,1,1,qOmega);</code> e o mesmo para R.",
     ],
 )
