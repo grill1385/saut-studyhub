@@ -356,6 +356,28 @@ begin
   R := Mzeros(2,2); Msetv(R,0,0,sensD_stddev); Msetv(R,1,1,sensA_stddev);
 end;`, false, "desvios padrão em vez de variâncias");
 
+/* ========= 3c. REGRESSOES DO INTERPRETADOR MATLAB ========= */
+console.log("\n3c) Regressões do interpretador");
+(function () {
+  const M = global.SAUT_MATLAB;
+  function eq(src, esperado, label) {
+    let got;
+    try { got = M.fmt(M.run("d=2; a=4; b=6;\n" + src).get("L")); }
+    catch (e) { got = "ERRO: " + e.message; }
+    const good = got === esperado;
+    if (!good) fails++;
+    console.log(`  ${good ? "✔" : "✘"} ${label}  ->  ${got}${good ? "" : "  (esperado " + esperado + ")"}`);
+  }
+  /* Regra do MATLAB: dentro de [], '(' com espaco antes comeca um NOVO elemento;
+     sem espaco e indexacao/chamada. Isto partia matrizes como
+     [(a)/d (b)/d 0], que sao MATLAB perfeitamente valido. */
+  eq("L = [(a)/d (b)/d 0];", "[2 3 0]", "[(a)/d (b)/d 0] sao tres elementos");
+  eq("L = [a (b) 9];", "[4 6 9]", "[a (b) 9] sao tres elementos");
+  eq("L = [sqrt(4) 7];", "[2 7]", "[sqrt(4) 7] mantem a chamada de funcao");
+  eq("v=[10 20 30]; L = [v(2) 9];", "[20 9]", "[v(2) 9] mantem a indexacao");
+  eq("L = [-(a)/d 1];", "[-2 1]", "unario com parentesis dentro de []");
+})();
+
 /* ================= 4. SINTAXE ================= */
 console.log("\n4) Erros de sintaxe e assinatura");
 check(L3, "dist2arc", "procedure Dist2Arc(xc, yc, R, xr, yr: double; var pix, piy: double)\nbegin\n  pix = R;\nend", false, "Pascal mal formado");

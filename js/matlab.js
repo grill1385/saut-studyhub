@@ -452,6 +452,10 @@
     }
     function parsePostfix(node) {
       for (;;) {
+        /* Dentro de [ ], um '(' precedido de espaço começa um NOVO elemento —
+           não é indexação nem chamada. É a regra do próprio MATLAB:
+           [a (b)] são dois elementos, [a(b)] é indexação. */
+        if (atOp("(") && brDepth > 0 && pk().ws) break;
         if (atOp("(")) {
           nx();
           var saved = brDepth; brDepth = 0;
