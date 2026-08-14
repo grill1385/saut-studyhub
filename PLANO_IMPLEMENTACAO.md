@@ -298,6 +298,36 @@ Nas tarefas de controlo da Lab 3 (`MotorVel`, `gotoXY`, `FollowLine`) continua a
 **velocidades** — e está correto, porque ali são mesmo comandos de velocidade enviados aos
 motores, não linearizações.
 
+### 12.8 Página de montagem do código (v9)
+
+Novo `kind:"assemble"` (js/app.js) que substitui as antigas páginas de entrega das três labworks.
+Junta o código guardado de **todas** as sub-tarefas `codeeval` do módulo, pela ordem das páginas,
+num único bloco pronto a copiar: cabeçalho por sub-tarefa (título + assinatura), comentário da
+linguagem certa (`//` Pascal, `%` MATLAB), marcação `(ainda por escrever)` para as que faltam,
+contador de progresso e botão de copiar (execCommand com fallback para `navigator.clipboard`).
+Fica automaticamente concluída quando todas as sub-tarefas do módulo estiverem resolvidas.
+Testado em `tools/test_assemble.js`.
+
+### 12.9 Cobertura do enunciado da Lab 5 (v9)
+
+| Alínea | Conteúdo | Onde |
+|---|---|---|
+| a) | odometria pura, ver a deriva | página «Experiências no SimTwo» |
+| b) | deteção e validação no laser | M5.6.4–6 (3 sub-tarefas avaliadas) |
+| c) | descomentar `LocationFromSensors`, `qV/qOmega/rSensD/rSensA`, sintonia de Q e P | M5.6.7–10 + tabelas medidas na página de experiências |
+| d) | beacon falso | 2 casos de teste na sub-tarefa de associação + experiência guiada |
+| e) | retirar um beacon | 1 caso de teste na associação, 1 no `LocationFromSensors` + experiência |
+
+Nova sub-tarefa **`locfromsensors`**: uma predição por ciclo e uma atualização por beacon com
+`n > 0`. O caso «nenhum beacon detetado» e o caso «só um à vista» apanham quem esqueça a guarda.
+
+Os números das tabelas de sintonia (Q = 1E-6/1E-2/1E-1 e P inicial i)/ii)) foram **medidos** no
+harness do hub, não estimados. O transitório é onde o P inicial se distingue: com
+cov = 1E-8 o filtro arrasta 192 mm de erro até ao ciclo 20; com 1E-4 já está em 1.7 mm.
+
+**Discrepância a assinalar:** o enunciado diz que o beacon 3 está em (0.5, 0.3); o código do
+professor tem (0.5, −0.3). As tarefas usam o valor do código.
+
 ### 12.6 Como replicar para a Lab 6
 | Lab | Solução disponível | O que falta construir |
 |-----|--------------------|-----------------------|

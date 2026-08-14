@@ -291,9 +291,11 @@ linha. Repara no que acontece à observabilidade em cada caso.</p>`),
       /* --------------------------------------------------- 12. entrega */
       {
         type: "labtask",
-        kind: "code",
-        title: "Entrega — o teu <code>ekf_1p_1p.m</code> final",
-        context: `<p>Junta as peças no <code>ekf_1p_1p__V2.m</code> e corre no MATLAB a sério: o hub
+        kind: "assemble",
+        title: "O teu <code>ekf_1p_1p.m</code> — tudo junto",
+        context: `<p>Aqui está o código de todas as sub-tarefas, pela ordem em que as escreveste, pronto
+para copiar para os sítios marcados com <code>??</code> no <code>ekf_1p_1p__V2.m</code>.</p>
+<p>Corre no MATLAB a sério: o hub
 valida a lógica, mas quem te mostra o filtro a trabalhar é o gráfico da trajetória verdadeira
 sobreposta à estimada.</p>
 <p><b>O que observar no gráfico:</b></p>
@@ -307,7 +309,7 @@ sobreposta à estimada.</p>
   como sugerido no <code>Tips_Labwork__4.pdf</code>.</li>
 </ul>
 <p>Ficas assim com material para as perguntas de exame sobre sintonia e sobre o papel de cada matriz.</p>`,
-        q: "Cola aqui a tua versão final do script (ou as partes que preencheste) para ficar guardada no milestone."
+        q: "Copia e leva para o MATLAB."
       }
     ]
   };

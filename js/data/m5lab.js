@@ -234,7 +234,28 @@ dá um salto de ~2π sempre que o poste está por trás do robô. Há um teste c
 <code>theta</code> das células. Parece redundante, mas é assim que o professor mantém a folha
 e as variáveis sincronizadas.</p>`),
 
-      /* --------------------------------------------------- 8. sintonia */
+      /* --------------------------------------------------- 8. glue */
+      code("locfromsensors",
+        "Sub-tarefa 5.6.9 — juntar as peças: <code>LocationFromSensors</code>",
+        "Escreve o <code>LocationFromSensors</code>: uma predição por ciclo e uma atualização por cada beacon efetivamente detetado.",
+        `<p>É a rotina que a <b>alínea c) do enunciado</b> te manda descomentar no
+<code>procedure Control</code>. Sem ela nada disto corre: o robô fica só com odometria, e vês a
+estimativa afastar-se lentamente da verdade — que é exatamente o que a alínea a) te pede para
+observares primeiro.</p>
+<p>São cinco linhas, mas encerram a estrutura de todo o filtro:</p>
+<ul>
+  <li><b>Uma</b> predição por ciclo. O robô só se mexeu uma vez nestes 40 ms.</li>
+  <li><b>Uma</b> atualização por cada beacon — mas só pelos que foram <b>mesmo detetados</b>.</li>
+</ul>
+<p>Essa segunda condição é a que separa o código que funciona do que rebenta. Um cluster que
+não recebeu nenhum ponto do laser tem <code>dist</code> e <code>ang</code> a zero: é uma medida
+inventada. Se a passares ao <code>EKF_Update</code>, o filtro trata-a como informação boa,
+encolhe o <code>P</code> e puxa a estimativa para um sítio arbitrário. É a versão silenciosa do
+problema que a <b>alínea e)</b> te pede para provocar, retirando um poste da cena.</p>
+<p>Um dos casos de teste tem os três clusters vazios — o resultado tem de ser <i>só</i> a
+predição, sem correção nenhuma.</p>`),
+
+      /* --------------------------------------------------- 9. sintonia */
       code("tuning",
         "Sub-tarefa 5.6.9 — sintonia de <code>Q</code> e <code>R</code>",
         "Escreve o <code>SetupNoise</code>: preenche <code>Q</code> (2×2, no espaço dos deslocamentos <code>[Δd ; Δθ]</code>) e <code>R</code> (2×2, no espaço das medidas) a partir dos desvios padrão declarados no topo do ficheiro.",
@@ -259,28 +280,102 @@ de ângulo, como nos pontos 2 e 4 da Lab 4).</p>
 <p>Atenção ao clássico: <code>Q</code> e <code>R</code> guardam <b>variâncias</b>. As constantes do
 topo do ficheiro são desvios padrão. Há um teste dedicado a apanhar essa confusão.</p>`),
 
-      /* --------------------------------------------------- 9. entrega */
+      /* ------------------------------------------- 10. experiências no SimTwo */
+      {
+        type: "theory",
+        title: "Experiências no SimTwo — alíneas a), c), d) e e)",
+        html: `
+<p>Estas quatro experiências <b>não são código</b>: são as observações que o enunciado pede e que
+o avaliador não pode fazer por ti, porque exigem o SimTwo a correr e a cena a ser editada.
+São elas que dão as respostas de exame sobre sintonia e robustez.</p>
+
+<h4>a) Só odometria — a linha de base</h4>
+<p>Põe a estimativa inicial <b>igual à verdadeira</b> nas células (33,3), (34,3), (35,3):
+<code>x = 0</code>, <code>y = 0</code>, <code>theta = 1.57</code>. Depois <b>Global RESET</b> →
+<b>Chart</b> (ligar) → <b>FollowSquare</b>, e deixa fechar o quadrado todo.</p>
+<p>Repara que aqui a estimativa arranca <i>certa</i>. Mesmo assim, a verde (estimada) separa-se
+da vermelha (verdadeira) ao longo do percurso. É a <b>deriva</b> da odometria — escorregamento das
+rodas, quantização dos encoders. Guarda esta imagem: é o problema que o EKF vem resolver, e é
+diferente do da Lab 4, onde o modelo era quase perfeito e o que estava errado era a pose inicial.</p>
+
+<h4>c) Sintonia de Q e do P inicial</h4>
+<p>Com a estimativa inicial agora <b>errada</b> (<code>x = y = 0.05</code>, <code>theta = 1.57</code>),
+o enunciado manda testar valores concretos. Corri-os no simulador do hub, a partir de um erro
+inicial de ~0.45 m:</p>
+<table class="testtab"><tbody>
+<tr><td><b>lin_stddev = omega_stddev</b></td><td><b>erro médio</b></td><td><b>erro máximo</b></td></tr>
+<tr><td>1E-6</td><td>6.6 mm</td><td>8.2 mm</td></tr>
+<tr><td>1E-2 <i>(valor do código)</i></td><td>3.4 mm</td><td>11.6 mm</td></tr>
+<tr><td>1E-1</td><td>3.8 mm</td><td>14.2 mm</td></tr>
+</tbody></table>
+<p>O padrão é o esperado: <code>Q</code> pequeno de mais dá uma estimativa <b>suave mas
+tendenciosa</b> (erro médio maior, máximo menor — o filtro não reage); <code>Q</code> grande dá
+uma estimativa <b>ágil mas ruidosa</b> (média baixa, picos maiores). O valor do meio é o
+compromisso. No SimTwo o efeito é mais marcado que aqui, porque lá a deriva da odometria é real.</p>
+
+<p>Para o <code>P</code> inicial o contraste é muito mais violento, e é no <b>transitório</b> que
+se vê. Erro de posição nos primeiros ciclos, partindo dos mesmos 0.45 m:</p>
+<table class="testtab"><tbody>
+<tr><td><b>P inicial</b></td><td><b>ciclo 1</b></td><td><b>ciclo 5</b></td><td><b>ciclo 20</b></td></tr>
+<tr><td>i) cov(x)=cov(y)=1E-4, cov(θ)=3E-4</td><td>49 mm</td><td>7 mm</td><td>1.7 mm</td></tr>
+<tr><td>ii) cov(x)=cov(y)=1E-8, cov(θ)=3E-8</td><td>386 mm</td><td>304 mm</td><td>192 mm</td></tr>
+</tbody></table>
+<p>É a lição central da alínea: com <code>P</code> minúsculo o filtro <b>declara ter a certeza</b>
+de uma pose que está errada. O ganho de Kalman fica quase nulo, ele rejeita as medidas que o
+tentam corrigir, e arrasta o erro durante dezenas de ciclos. Com <code>P</code> folgado, corrige
+quase de imediato. Moral: <b>P inicial deve refletir a tua ignorância real sobre a pose de
+arranque</b> — na dúvida, peca por excesso.</p>
+
+<h4>d) Beacon falso</h4>
+<p>No editor de cena (Ctrl+S) acrescenta o cilindro que o enunciado dá, em (1.4, 1.0):</p>
+<pre class="pas">&lt;cylinder&gt;
+  &lt;ID value='BeaconFalse'/&gt;
+  &lt;size x='0.1' y='0' z='0.4'/&gt;
+  &lt;pos x='1.4' y='1' z='0.2'/&gt;
+  &lt;color_rgb r='128' g='128' b='128'/&gt;
+&lt;/cylinder&gt;</pre>
+<p>Está a 0.32 m do beacon 2, que fica em (1.3, 1.3) — bem acima do limiar de 0.1 m. O módulo de
+associação deve ignorá-lo por completo: nas células (1,1)–(3,3) o número de pontos de cada cluster
+não se altera. <b>Duas das sub-tarefas de associação já testam este cenário</b>, incluindo uma
+variante com o poste falso a apenas 12 cm do verdadeiro.</p>
+<p>A experiência a fazer é <b>arrastar o poste falso</b> para cada vez mais perto do verdadeiro e
+encontrar a distância a partir da qual o cluster fica contaminado. Vais ver o centróide desviar-se
+e a estimativa dar um puxão. É a pergunta de exame sobre associação de dados: o limiar é um
+compromisso entre apanhar todos os pontos do poste certo e não apanhar nenhum do errado.</p>
+
+<h4>e) Retirar um beacon</h4>
+<p>Ainda no editor de cena, apaga um dos três postes. O cluster correspondente passa a ter
+<code>n = 0</code> e o <code>LocationFromSensors</code> deixa de fazer a atualização com ele —
+por isso é que aquele <code>if</code> lá está.</p>
+<p>O que observar é a <b>geometria da incerteza</b>: com dois postes o filtro ainda localiza, mas
+a elipse de covariância deixa de ser aproximadamente circular. Coloca o robô em posições onde os
+dois postes restantes fiquem quase alinhados com ele e repara na incerteza a crescer na direção
+perpendicular. É observabilidade — o mesmo fenómeno que exploraste nos pontos 2 e 4 da Lab 4.</p>
+
+<div class="labctx"><b>Nota sobre uma discrepância.</b> O enunciado diz que o terceiro beacon está
+em <b>(0.5, 0.3)</b>, mas o código do professor tem <code>BeaconPos[3] := (0.5, -0.3)</code>. As
+sub-tarefas deste módulo usam o valor do <b>código</b>, que é o que a cena carrega. Se o professor
+perguntar, vale a pena teres reparado.</div>`,
+        slideRef: "SAUT_LabWork_5_EKF_Beacons_SimTwo (V4, 11Nov2024), alíneas a)–e)"
+      },
+
+      /* --------------------------------------------------- 11. montagem */
       {
         type: "labtask",
-        kind: "code",
-        title: "Entrega — o teu <code>NXTControl.spas</code> final",
-        context: `<p>Junta tudo no projeto <code>EKF_Beacon_Laser_Students</code> e corre no SimTwo.
-As duas rotinas auxiliares que escreveste aqui (<code>LaserPointToWorld</code> e
-<code>ClusterMeasure</code>) voltam para dentro do <code>procedure Control</code>, nas linhas que
-estavam comentadas. E não te esqueças de descomentar a chamada a
-<code>LocationFromSensors()</code> — sem ela o EKF nunca chega a correr.</p>
-<p><b>O que observar com o robô a andar:</b></p>
-<ul>
-  <li>as células (1,1)–(3,3) mostram quantos pontos foram associados a cada poste e o centróide;
-  se algum ficar a zero enquanto o poste está à vista, a associação está errada;</li>
-  <li>o bloco de <code>P</code> na folha: deve <b>crescer</b> entre observações e <b>encolher</b>
-  a cada <code>EKF_Update</code>;</li>
-  <li>a diferença entre a pose estimada e a verdadeira (<code>GetRobotX/Y/Theta</code>) ao longo de
-  uma volta ao quadrado — compara com o que obtinhas só com odometria na Lab 1;</li>
-  <li>o que acontece quando o robô fica virado de forma a só ver um poste: a incerteza cresce na
-  direção perpendicular à linha robô–poste. É a observabilidade a manifestar-se.</li>
-</ul>`,
-        q: "Cola aqui a versão final do teu código (ou as rotinas que preencheste) para ficar guardada no milestone."
+        kind: "assemble",
+        title: "O teu <code>NXTControl.spas</code> — tudo junto",
+        context: `<p>Aqui está o código de todas as sub-tarefas, pela ordem em que as escreveste,
+pronto para copiar de uma vez para o editor do SimTwo.</p>
+<p>Duas notas ao colar: as rotinas auxiliares <code>LaserPointToWorld</code> e
+<code>ClusterMeasure</code> foram pedidas assim para serem testáveis — no ficheiro do professor o
+corpo delas vai <b>para dentro</b> do <code>procedure Control</code>, nas linhas que estavam
+comentadas. E não te esqueças de <b>descomentar a chamada a
+<code>LocationFromSensors()</code></b>: sem ela o EKF não corre.</p>
+<p><b>Checklist antes de dar a labwork por terminada:</b> as células (1,1)–(3,3) mostram pontos
+associados a cada poste; o bloco do <code>P</code> na folha cresce entre observações e encolhe a
+cada atualização; e a pose estimada segue a verdadeira (<code>GetRobotX/Y/Theta</code>) ao longo
+de uma volta completa ao quadrado.</p>`,
+        q: "Copia e leva para o SimTwo."
       }
     ]
   };

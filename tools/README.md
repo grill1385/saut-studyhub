@@ -53,3 +53,12 @@ cada fragmento e simula os varrimentos do laser usados nos testes de associaçã
 python3 tools/gen_lab5spec.py
 node --check js/data/lab5spec.js
 ```
+
+## `test_assemble.js`
+Testa a página de montagem de código (o último passo de cada labwork): junta o código das
+sub-tarefas pela ordem certa, marca as que faltam, usa o comentário da linguagem certa
+(`//` em Pascal, `%` em MATLAB) e copia.
+
+```bash
+node tools/test_assemble.js
+```

@@ -132,6 +132,8 @@ begin
   end;
 end;"""
 
+R_LOCSENS = grab("LocationFromSensors")
+
 R_TUNING = """procedure SetupNoise;
 var qV, qOmega, rSensD, rSensA: double;
 begin
@@ -247,8 +249,14 @@ def mat(rows):
 # ===========================================================================
 #  Simulação de um varrimento laser (para a tarefa de associação)
 # ===========================================================================
-def laser_scan(px, py, th, rb=0.02, box=3.0):
-    """360 raios a partir da origem do laser (0.14 m atrás do robô)."""
+def laser_scan(px, py, th, rb=0.02, box=3.0, extra=(), remover=()):
+    """360 raios a partir da origem do laser (0.14 m atrás do robô).
+
+    extra   : postes adicionais NAO conhecidos pelo mapa (ex.: o beacon falso
+              da alinea d do enunciado)
+    remover : indices de beacons a retirar da cena (alinea e)
+    """
+    postes = [v for k, v in BEACONS.items() if k not in remover] + list(extra)
     lx = px - 0.14 * math.cos(th)
     ly = py - 0.14 * math.sin(th)
     rows = []
@@ -263,7 +271,7 @@ def laser_scan(px, py, th, rb=0.02, box=3.0):
                 if t > 0 and (best is None or t < best):
                     best = t
         # beacons (círculos)
-        for (bx, by) in BEACONS.values():
+        for (bx, by) in postes:
             ox, oy = lx - bx, ly - by
             b = 2 * (ox * dx + oy * dy)
             c = ox * ox + oy * oy - rb * rb
@@ -622,6 +630,21 @@ end;""",
                                beaconpos=beacon_js(), beaconcluster=cluster_js({})),
              laser=laser_scan(px, py, th))
         for (nome, px, py, th) in SCEN
+    ] + [
+        # alinea d) do enunciado: poste FALSO em (1.4, 1.0), a 0.32 m do beacon 2
+        dict(name="Beacon falso na cena (alínea d) — não pode contaminar o cluster",
+             G=dict(x=0.5, y=0.5, theta=0.0, firstray=0, lastray=359,
+                    beaconpos=beacon_js(), beaconcluster=cluster_js({})),
+             laser=laser_scan(0.5, 0.5, 0.0, extra=[(1.4, 1.0)])),
+        dict(name="Beacon falso mesmo ao lado do verdadeiro (a 12 cm)",
+             G=dict(x=0.5, y=0.2, theta=0.3, firstray=0, lastray=359,
+                    beaconpos=beacon_js(), beaconcluster=cluster_js({})),
+             laser=laser_scan(0.5, 0.2, 0.3, extra=[(1.42, 1.3)])),
+        # alinea e) do enunciado: beacon 3 retirado da cena
+        dict(name="Beacon 3 retirado da cena (alínea e) — o cluster fica vazio",
+             G=dict(x=0.5, y=0.5, theta=0.0, firstray=0, lastray=359,
+                    beaconpos=beacon_js(), beaconcluster=cluster_js({})),
+             laser=laser_scan(0.5, 0.5, 0.0, remover=(3,))),
     ],
     rules=[
         dict(level="error", re=r"mgetv", msg="As distâncias do laser lêem-se da matriz <code>LaserValues</code> com <code>Mgetv(LaserValues, i, 0)</code>."),
@@ -636,6 +659,113 @@ end;""",
         "A distância a usar é <code>Mgetv(LaserValues, i, 0) + 0.02</code>, e só interessa se for maior que zero.",
         "A associação é por proximidade ao beacon <b>conhecido</b>: <code>if Dist(BeaconPos[j].x - MeasurePos.x, BeaconPos[j].y - MeasurePos.y) < 0.1</code>.",
         "Incrementa <code>n</code> <b>primeiro</b> e só depois atualiza a média incremental — a fórmula do professor assume essa ordem.",
+    ],
+)
+
+def cl(vals):
+    """clusters ja com dist/ang preenchidos (o que o EKF_Update consome)."""
+    out = {}
+    for j in range(1, 4):
+        bx, by = BEACONS[j]
+        if j in vals:
+            px, py, n = vals[j]
+            d = math.hypot(bx - px, by - py)
+            a = math.atan2(by - py, bx - px) - vals["th"]
+            while a > math.pi: a -= 2 * math.pi
+            while a <= -math.pi: a += 2 * math.pi
+            out[str(j)] = {"x": bx, "y": by, "n": n, "dist": d, "ang": a}
+        else:
+            out[str(j)] = {"x": 0.0, "y": 0.0, "n": 0, "dist": 0.0, "ang": 0.0}
+    return out
+
+
+T(
+    id="locfromsensors",
+    title="Juntar as peças — <code>LocationFromSensors</code>",
+    entry="locationfromsensors",
+    prelude=CONSTS + "\n" + R_MOTION + "\n" + R_UPDATE,
+    solution=R_LOCSENS,
+    globals=["x", "y", "theta", "vlin", "omega"],
+    watch=["p", "xr", "x", "y", "theta"],
+    sheet0=SHEET0,
+    tol=1e-6, tolPct=5e-3,
+    signature="procedure LocationFromSensors();",
+    starter="""procedure LocationFromSensors();
+var j: integer;
+begin
+  // E esta a rotina que o enunciado (alinea c) manda DESCOMENTAR no Control.
+  // Sem ela o EKF nunca corre: o robo fica so com odometria.
+  //
+  // Um ciclo de filtro completo:
+  //   1) UMA predicao  (o robo so se mexeu uma vez neste ciclo de 40 ms)
+  //   2) UMA atualizacao POR CADA beacon que tenha sido MESMO detetado
+  //
+  // Atencao: o laser pode nao ver todos os beacons. Como e que sabes
+  // quais e que foram detetados?
+
+end;""",
+    tests=[
+        dict(name="Os três beacons detetados",
+             G=dict(x=0.55, y=0.45, theta=0.15, vlin=0.2, omega=0.3,
+                    p=mat([[0.04, 0.01, 0], [0.01, 0.04, 0], [0, 0, 0.02]]),
+                    q=mat([[1e-4, 0], [0, 1e-4]]),
+                    r=mat([[2.5e-5, 0], [0, 8.1e-5]]),
+                    xr=mat([[0.55], [0.45], [0.15]]),
+                    beaconpos=beacon_js(),
+                    beaconcluster=cl({"th": 0.15, 1: (0.5, 0.5, 6), 2: (0.5, 0.5, 5), 3: (0.5, 0.5, 7)}),
+                    logon=False)),
+        dict(name="Só o beacon 2 à vista — os outros têm de ser ignorados",
+             G=dict(x=0.55, y=0.45, theta=0.15, vlin=0.2, omega=0.3,
+                    p=mat([[0.04, 0.01, 0], [0.01, 0.04, 0], [0, 0, 0.02]]),
+                    q=mat([[1e-4, 0], [0, 1e-4]]),
+                    r=mat([[2.5e-5, 0], [0, 8.1e-5]]),
+                    xr=mat([[0.55], [0.45], [0.15]]),
+                    beaconpos=beacon_js(),
+                    beaconcluster=cl({"th": 0.15, 2: (0.5, 0.5, 5)}),
+                    logon=False)),
+        dict(name="Nenhum beacon detetado — só predição, sem correção",
+             G=dict(x=0.3, y=0.8, theta=-0.4, vlin=0.25, omega=-0.2,
+                    p=mat([[0.02, 0, 0], [0, 0.02, 0], [0, 0, 0.01]]),
+                    q=mat([[1e-4, 0], [0, 1e-4]]),
+                    r=mat([[2.5e-5, 0], [0, 8.1e-5]]),
+                    xr=mat([[0.3], [0.8], [-0.4]]),
+                    beaconpos=beacon_js(),
+                    beaconcluster=cl({"th": -0.4}),
+                    logon=False)),
+        dict(name="Beacons 1 e 3 (alínea e: o 2 foi retirado da cena)",
+             G=dict(x=0.2, y=0.1, theta=1.0, vlin=0.18, omega=0.5,
+                    p=mat([[0.06, 0.01, 0], [0.01, 0.05, 0], [0, 0, 0.03]]),
+                    q=mat([[1e-4, 0], [0, 1e-4]]),
+                    r=mat([[2.5e-5, 0], [0, 8.1e-5]]),
+                    xr=mat([[0.2], [0.1], [1.0]]),
+                    beaconpos=beacon_js(),
+                    beaconcluster=cl({"th": 1.0, 1: (0.25, 0.15, 4), 3: (0.25, 0.15, 9)}),
+                    logon=False)),
+        dict(name="Três ciclos seguidos", repeat=3,
+             G=dict(x=0.5, y=0.5, theta=0.0, vlin=0.2, omega=0.3,
+                    p=mat([[0.03, 0, 0], [0, 0.03, 0], [0, 0, 0.015]]),
+                    q=mat([[1e-4, 0], [0, 1e-4]]),
+                    r=mat([[2.5e-5, 0], [0, 8.1e-5]]),
+                    xr=mat([[0.5], [0.5], [0.0]]),
+                    beaconpos=beacon_js(),
+                    beaconcluster=cl({"th": 0.0, 1: (0.5, 0.5, 6), 2: (0.5, 0.5, 6), 3: (0.5, 0.5, 6)}),
+                    logon=False)),
+    ],
+    rules=[
+        dict(level="error", re=r"ekf_motionmodel", msg="O ciclo começa sempre pela <b>predição</b>: chama o <code>EKF_MotionModel</code>."),
+        dict(level="error", re=r"ekf_update", msg="Falta a fase de <b>atualização</b> — <code>EKF_Update(j)</code>, uma vez por beacon detetado."),
+        dict(level="error", re=r"\.n\s*>\s*0|\.n\s*>=\s*1", msg="Só podes atualizar com beacons que foram <b>mesmo detetados</b>. O campo <code>n</code> do cluster diz-te quantos pontos do laser lhe foram associados."),
+    ],
+    signalHints={
+        "G.p": "Se o P está errado mas o estado quase certo, provavelmente estás a chamar o <code>EKF_Update</code> para beacons com <code>n = 0</code>. Um cluster vazio tem <code>dist</code> e <code>ang</code> a zero — é uma medida inventada, e o filtro encolhe o P com base em informação que não existe.",
+        "G.x": "A ordem importa: <b>uma</b> predição no início do ciclo, e só depois as atualizações. Se chamares o <code>EKF_MotionModel</code> dentro do ciclo dos beacons, estás a propagar o movimento três vezes num ciclo em que o robô só se mexeu uma vez.",
+        "G.theta": "Repara que no caso «nenhum beacon detetado» o resultado tem de ser só a predição — sem nenhuma correção. É o que acontece quando o robô fica virado para uma zona sem postes.",
+    },
+    hints=[
+        "São só duas ideias: uma predição por ciclo, e uma atualização por cada beacon <b>que tenha sido detetado</b>.",
+        "A predição é a primeira coisa — antes de olhar para qualquer medida.",
+        "Como sabes se o beacon <code>j</code> foi detetado? O <code>AssociateBeacons</code> deixou essa informação no cluster. Quantos pontos do laser lhe calharam?",
+        "Solução: <code>EKF_MotionModel;</code> e depois <code>for j:=1 to NBEACONS do begin if BeaconCluster[j].n > 0 then EKF_Update(j); end;</code>",
     ],
 )
 

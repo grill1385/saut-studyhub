@@ -29,6 +29,28 @@ function labSpec(modId, taskId){
   const bank = window.SAUT_LABSPEC && window.SAUT_LABSPEC[modId];
   return bank ? bank[taskId] : null;
 }
+/* junta o código de todas as sub-tarefas codeeval do módulo, pela ordem das páginas */
+function assembleCode(msId, mod){
+  const store = msCodeTasks(msId);
+  const partes = [];
+  let feitas = 0, total = 0, falta = [];
+  mod.pages.forEach((pg, pi)=>{
+    if(pg.kind !== "codeeval") return;
+    total++;
+    const spec = labSpec(mod.id, pg.task);
+    const c = (spec && spec.lang === "matlab") ? "%" : "//";
+    const txt = store[pg.task];
+    const st2 = modState(msId, mod.id).quiz["p"+pi+"q0"];
+    if(st2 && st2.ok) feitas++; else falta.push(pg.title.replace(/<[^>]+>/g,""));
+    const cab = c+" "+"=".repeat(70)+"\n" +
+                c+" "+pg.title.replace(/<[^>]+>/g,"") + "\n" +
+                (spec && spec.signature ? c+" "+spec.signature+"\n" : "") +
+                c+" "+"=".repeat(70);
+    partes.push(cab + "\n" + (txt && txt.trim() ? txt.trim() : c+" (ainda por escrever)") + "\n");
+  });
+  return {texto: partes.join("\n"), feitas: feitas, total: total, falta: falta};
+}
+
 function evalReportHTML(res, spec){
   const esc = t=>String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;");
   if(res.phase === "vazio") return `<div class="q-feed bad">${res.error}</div>`;
@@ -367,6 +389,18 @@ function renderModule(msId, modId){
         <div class="q-input"><button class="btn small primary q-code">💾 Guardar código</button>
         ${saved? `<span class="mini-label">guardado em ${new Date(saved.when).toLocaleString()} — consultável na página do milestone</span>`:""}</div>`;
       actions = "";
+    } else if(pg.kind==="assemble"){
+      const A = assembleCode(msId, mod);
+      const pronto = A.total>0 && A.feitas===A.total;
+      if(pronto && !stq.ok){ st.quiz[qid] = Object.assign({}, stq, {ok:true}); save(); }
+      inputArea = `<div class="sig">${A.feitas} de ${A.total} sub-tarefas resolvidas${
+          A.falta.length? " — em falta: <b>"+A.falta.join("</b>, <b>")+"</b>" : " ✓"}</div>
+        <textarea class="code-ta code-eval" id="asm-ta" rows="22" readonly spellcheck="false">${esc(A.texto)}</textarea>
+        <div class="q-input">
+          <button class="btn small primary q-copy">📋 Copiar tudo</button>
+          <span class="mini-label" id="asm-msg"></span>
+        </div>`;
+      actions = "";
     } else if(pg.kind==="codeeval"){
       const spec = labSpec(mod.id, pg.task);
       const savedTxt = msCodeTasks(msId)[pg.task];
@@ -388,6 +422,14 @@ function renderModule(msId, modId){
       inputArea = `<div class="q-input"><input type="text" ${stq.ok?"disabled":""} value="${stq.ok?(stq.val??""):""}" placeholder="o teu input…">
         <span class="q-unit">${pg.unit||""}</span><button class="btn small primary q-check" ${stq.ok?"disabled":""}>Submeter</button></div>`;
       actions = `<button class="btn small q-hint">💡 Dica</button><button class="btn small danger q-sol">SOLUÇÃO DIRETA</button>`;
+    }
+    if(pg.kind==="assemble"){
+      return `<h3>${pg.title}</h3>
+        ${pg.context? `<div class="labctx">${pg.context}</div>`:""}
+        <div class="q-block" data-qid="${qid}" data-qi="0" data-labtask="1">
+          <div class="q-txt">${pg.q||""} ${qc}</div>${inputArea}
+          <div class="q-feedzone"></div>
+        </div>`;
     }
     if(pg.kind==="codeeval"){
       const spec = labSpec(mod.id, pg.task);
@@ -529,6 +571,20 @@ function renderModule(msId, modId){
         st.quiz[qid] = Object.assign({ok:false}, st.quiz[qid]);
         st.quiz[qid].revealed = !st.quiz[qid].revealed;
         save(); renderModule(msId, modId);
+      };
+      // copiar o código montado de todas as sub-tarefas
+      const cpb = blk.querySelector(".q-copy");
+      if(cpb) cpb.onclick = ()=>{
+        const ta = blk.querySelector("#asm-ta");
+        const msg = blk.querySelector("#asm-msg");
+        let feito = false;
+        try{ ta.removeAttribute("readonly"); ta.select(); ta.setSelectionRange(0, 999999);
+             feito = document.execCommand("copy"); ta.setAttribute("readonly",""); }catch(e){}
+        if(!feito && navigator.clipboard){
+          navigator.clipboard.writeText(ta.value).then(()=>{ msg.textContent = "copiado ✓"; });
+          return;
+        }
+        msg.textContent = feito ? "copiado ✓" : "não consegui copiar — seleciona e usa Ctrl+C";
       };
       // guardar snippet de código
       const cbtn = blk.querySelector(".q-code");

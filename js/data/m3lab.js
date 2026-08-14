@@ -262,9 +262,11 @@ para que lado rodar, e é o <code>NormalizeAngle</code> que garante o caminho ma
       /* ------------------------------------------------ 10. entrega */
       {
         type: "labtask",
-        kind: "code",
-        title: "Entrega — o teu <code>control.pas</code> final",
-        context: `<p>Junta as rotinas que escreveste num único ficheiro e testa-o no SimTwo a sério:
+        kind: "assemble",
+        title: "O teu <code>control.pas</code> — tudo junto",
+        context: `<p>Aqui está o código de todas as sub-tarefas, pela ordem em que as escreveste, pronto
+para copiar de uma vez para o editor do SimTwo.</p>
+<p>Testa-o no simulador a sério:
 o avaliador do hub verifica a lógica, mas não substitui ver o robô a mexer-se (há atrito,
 escorregamento das mecanum e saturação dos motores que a simulação simplificada aqui não tem).</p>
 <p><b>Checklist antes de dar por concluída a labwork:</b></p>
@@ -276,7 +278,7 @@ escorregamento das mecanum e saturação dos motores que a simulação simplific
   <li>comparar a pose odométrica com a verdadeira (<code>GetRobotX/Y/Theta</code>) no fim de cada
   percurso — é essa diferença que motiva o EKF do M4.</li>
 </ul>`,
-        q: "Cola aqui a versão final do teu código (as rotinas todas) para ficar guardada no milestone."
+        q: "Copia e leva para o SimTwo."
       }
     ]
   };
