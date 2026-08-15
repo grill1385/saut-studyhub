@@ -140,7 +140,10 @@ Perguntas do exame modelo (mapa no docx, Tabela 10) devem aparecer como exercíc
   de uma pergunta do utilizador sobre a ausência de `dt` no `grad_f_U`. Reescritos contextos,
   esqueletos, dicas e regras; o `SIM_HARNESS` da Lab 5 passou a estar escrito em deslocamentos
   (comportamento numérico idêntico, verificado).
-- [ ] Lab 6 avaliável — ver tabela 12.6 (sem oráculo completo; ponderar avaliação só estrutural)
+- [x] v10 (sessão 8): **interpretador de C/C++** (`js/clike.js`) + **simulador da pista**
+  (`js/track_sim.js`) + **M7 completo** (`js/data/lab6spec.js`, `js/data/m7lab.js`): 4 sub-tarefas
+  da Lab 6 avaliadas e 2 módulos de deployment orientados a exame. Ver secção 12.10.
+- [ ] (feito) Lab 6 avaliável — ver tabela 12.6 (sem oráculo completo; ponderar avaliação só estrutural)
 - [ ] M6 conteúdo (stub) — PRÓXIMO PASSO: decks SAUT_Prob_Localization (23 págs) + SAUT_Loc_Map_Matching (27 págs); sem lab dedicada → módulo final = mini-teste estilo M0. Perguntas exame: MCL/kidnap, rejeição outliers (já introduzida no m5-mod2!), map matching P14, landmarks lineares. Atualizar topics.js (mcl, mapm) e graph.js (nós mcl, mapm).
 - [ ] M7 conteúdo (stub) — decks SLAM (38), MultiRobot (12), Drone (8) + Labs 6/7 (checklist guiado). Atualizar topics.js (slam, mrob) e graph.js (slam, mrob).
 
@@ -327,6 +330,51 @@ cov = 1E-8 o filtro arrasta 192 mm de erro até ao ciclo 20; com 1E-4 já está 
 
 **Discrepância a assinalar:** o enunciado diz que o beacon 3 está em (0.5, 0.3); o código do
 professor tem (0.5, −0.3). As tarefas usam o valor do código.
+
+### 12.10 Camada C/C++ e Labs 6/7 (v10)
+
+**`js/clike.js`** — interpretador de C/C++ (AST-walking, não transpilador, porque há objetos e
+métodos). Cobre: declarações tipadas, funções livres e métodos `Classe::nome`, parâmetros por
+referência, if/else/for/while/do, `++ -- += -= *= /=`, ternário, membros `a.b`/`a->b`, indexação,
+construção por declaração (`htransf_2d_t H(a,b,c)`), e **locais `static` com persistência entre
+chamadas** (guardados no âmbito global, que é o que dá a semântica certa).
+Teste de aceitação: faz parse do `actions.cpp` **real** do professor (21 funções).
+Ignora `#include`/`#define`; não cobre ponteiros, templates nem herança.
+
+**`js/track_sim.js`** — simulador da pista da Lab 6. Geometria do `fill_track_segment_list()`
+(5 troços, ~1.56 m de perímetro, entalhe em V no topo), cantos arredondados, modelo do sensor de
+linha (alcance ±35 mm, 30 mm à frente do eixo) e integração do robô diferencial com saturação
+(±0.4 m/s, ±8 rad/s). Devolve `{ok, time, laps, maxDev, minVreq, maxWreq, offTrack}`.
+
+**Convenção do sensor** (assumida, e declarada ao utilizador): `pos_center > 0` = linha à direita;
+`w > 0` = roda para a esquerda. Coerente com o `ktrack` negativo do firmware. No robô real o
+utilizador é avisado para confirmar na célula (25,7) antes de duvidar do código.
+
+**Grader**: `lang:"clike"`, com casos `kind:"track"` (critério sobre a simulação) ou comparação de
+campos do `robot`. Mocks de `Vec2f`, `htransf_2d_t`, `segment_t`, `segment_list` (os 5 troços do
+firmware) e do `robot` com `IRLine`.
+
+> **Bug corrigido pelo caminho:** o `stripComments()` do grader usava as regras do Pascal para
+> todas as linguagens — em C apagava tudo entre `{ }`, ou seja o corpo das funções, e as regras
+> estruturais falhavam sempre. Agora é por linguagem.
+
+**Proveniência (diferente das Labs 3–5):** não há solução do professor para a Lab 6. As
+referências foram escritas a partir do **enunciado**, que dá a equação (1) do v(ω) e as regras de
+correção de pose. As duas tarefas do `follow_track` avaliam por **critério**, que é o que o
+enunciado pede («velocidade máxima para dar a volta», «melhor tempo para três voltas»).
+
+Números medidos na simulação, que sustentam o texto do módulo:
+
+| controlador | v_nom máximo | 3 voltas | desvio máximo |
+|---|---|---|---|
+| ω=0 ao perder a linha | — | não completa 1 volta (sai a 38%) | — |
+| proporcional + memória | 0.25 m/s | 20.6 s | 51 mm |
+| com v(ω) | 0.40 m/s (limite do robô) | 15.2 s | 9 mm |
+
+**M7** deixou de ser stub: `js/data/m7lab.js` com quatro módulos — 7.1 deployment do diferencial,
+7.2 deployment do omni em ROS (ambos orientados a exame, com quizzes), 7.3 Labwork 6 com 4
+sub-tarefas avaliadas, 7.4 Labwork 7 (sem código: as rotinas são as da Lab 3, o que muda é a
+arquitetura; e não temos o `SARosNavController.cpp` para inventar assinaturas com fidelidade).
 
 ### 12.6 Como replicar para a Lab 6
 | Lab | Solução disponível | O que falta construir |

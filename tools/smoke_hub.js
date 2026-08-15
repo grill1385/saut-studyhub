@@ -46,7 +46,8 @@ section("Estrutura das labworks avaliadas");
 const LABS = [
   { ms: "m3", mod: "m3-mod6" },
   { ms: "m4", mod: "m4-mod7" },
-  { ms: "m5", mod: "m5-mod6" }
+  { ms: "m5", mod: "m5-mod6" },
+  { ms: "m7", mod: "m7-mod3" }
 ];
 for (const L of LABS) {
   const mods = (w.SAUT_CONTENT[L.ms] || { modules: [] }).modules;

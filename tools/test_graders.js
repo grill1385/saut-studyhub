@@ -10,14 +10,15 @@ const path = require("path");
 const fs = require("fs");
 const ROOT = path.join(__dirname, "..");
 global.window = global;
-["js/pascal.js", "js/matlab.js", "js/grader.js",
- "js/data/lab3spec.js", "js/data/lab4spec.js", "js/data/lab5spec.js"]
+["js/pascal.js", "js/matlab.js", "js/clike.js", "js/track_sim.js", "js/grader.js",
+ "js/data/lab3spec.js", "js/data/lab4spec.js", "js/data/lab5spec.js", "js/data/lab6spec.js"]
   .forEach(f => eval(fs.readFileSync(path.join(ROOT, f), "utf8")));
 
 const G = global.SAUT_GRADER;
 const L3 = global.SAUT_LABSPEC["m3-mod6"];
 const L4 = global.SAUT_LABSPEC["m4-mod7"];
 const L5 = global.SAUT_LABSPEC["m5-mod6"];
+const L6 = global.SAUT_LABSPEC["m7-mod3"];
 let fails = 0;
 
 function strip(s) { return String(s).replace(/<[^>]+>/g, ""); }
@@ -41,7 +42,7 @@ function check(bank, id, src, expectOk, label) {
 
 /* ================= 1. ORÁCULO ================= */
 console.log("\n1) Oráculo — a solução do professor passa");
-[[L3, "Lab 3"], [L4, "Lab 4"], [L5, "Lab 5"]].forEach(([bank, nome]) => {
+[[L3, "Lab 3"], [L4, "Lab 4"], [L5, "Lab 5"], [L6, "Lab 6"]].forEach(([bank, nome]) => {
   Object.keys(bank).forEach(id => check(bank, id, bank[id].solution, true, nome + " oráculo"));
 });
 
@@ -355,6 +356,134 @@ begin
   Q := Mzeros(2,2); Msetv(Q,0,0,lin_stddev); Msetv(Q,1,1,omega_stddev);
   R := Mzeros(2,2); Msetv(R,0,0,sensD_stddev); Msetv(R,1,1,sensA_stddev);
 end;`, false, "desvios padrão em vez de variâncias");
+
+/* ================= 3d. LAB 6 (C++) ================= */
+console.log("\n3d) Lab 6 — equivalentes e erros");
+
+check(L6, "follow", `
+void action_t::follow_track(void)
+{
+  static float memoria = 0;
+  float erro = robot.IRLine.pos_center;
+  if (robot.IRLine.found_center) { memoria = ktrack * erro; }
+  robot.w_req = memoria;
+  robot.v_req = v_nom;
+}`, true, "seguimento com variavel estatica e outra estrutura");
+
+check(L6, "followvw", `
+void action_t::follow_track(void)
+{
+  float w, s;
+  if (robot.IRLine.found_center) { w = ktrack * robot.IRLine.pos_center; wmem = w; }
+  else { w = wmem; }
+  robot.w_req = w;
+  s = 1 - (w*w)/(w0*w0);
+  if (s < 0) s = 0;
+  robot.v_req = v_nom * s;
+}
+float wmem = 0;`, true, "v(w) reescrito como v_nom*(1 - w^2/w0^2)");
+
+check(L6, "locgen", `
+void track_localization(robot_t& robot, float_list_t& w_list)
+{
+  robot.led = 0;
+  robot.align_index = -1;
+  if (robot.mean_abs_w >= robot.mean_abs_w_tresh) return;
+  if (robot.mean_abs_w >= robot.prev_mean_abs_w) return;
+  int i = 0;
+  while (i < segment_list.size()) {
+    segment_t seg = segment_list[i];
+    if (abs(dif_angle(normalize_angle(robot.thetae), seg.angle)) < robot.align_angle_tresh) {
+      robot.led = 1;
+      robot.align_index = i;
+      robot.thetae = seg.angle;
+      htransf_2d_t H(seg.angle, seg.Pi.x, seg.Pi.y);
+      Vec2f Ps = H.apply_inv(robot.xe, robot.ye);
+      Ps.y = 0;
+      Vec2f Pw = H.apply(Ps);
+      robot.xe = Pw.x;
+      robot.ye = Pw.y;
+      return;
+    }
+    i = i + 1;
+  }
+}`, true, "localizacao com while e return antecipado");
+
+/* --- erros --- */
+check(L6, "follow", `
+void action_t::follow_track(void)
+{
+  if (robot.IRLine.found_center) robot.w_req = ktrack * robot.IRLine.pos_center;
+  else robot.w_req = 0;
+  robot.v_req = v_nom;
+}`, false, "nao trata a perda da linha (w=0)");
+
+check(L6, "follow", `
+void action_t::follow_track(void)
+{
+  robot.w_req = -ktrack * robot.IRLine.pos_center;
+  robot.v_req = v_nom;
+}`, false, "sinal do ganho trocado");
+
+check(L6, "followvw", `
+float lw = 0;
+void action_t::follow_track(void)
+{
+  float w;
+  if (robot.IRLine.found_center) { w = ktrack * robot.IRLine.pos_center; lw = w; } else w = lw;
+  robot.w_req = w;
+  robot.v_req = v_nom;
+}`, false, "sem a modulacao v(w) a 0.40 m/s");
+
+check(L6, "followvw", `
+float lw = 0;
+void action_t::follow_track(void)
+{
+  float w;
+  if (robot.IRLine.found_center) { w = ktrack * robot.IRLine.pos_center; lw = w; } else w = lw;
+  robot.w_req = w;
+  robot.v_req = -v_nom/(w0*w0) * (w - w0) * (w + w0);
+}`, false, "v(w) sem o max(0, ...)");
+
+check(L6, "locxy", `
+void track_localization(robot_t& robot, float_list_t& w_list)
+{
+  robot.led = 0;
+  robot.align_index = -1;
+  for (int i = 0; i < segment_list.size(); i++) {
+    segment_t seg = segment_list[i];
+    if (abs(dif_angle(normalize_angle(robot.thetae), seg.angle)) < robot.align_angle_tresh) {
+      robot.led = 1;
+      robot.align_index = i;
+      robot.thetae = seg.angle;
+      if (robot.align_index == 0) robot.ye = seg.Pi.y;
+      else if (robot.align_index == 1) robot.xe = seg.Pi.x;
+      break;
+    }
+  }
+}`, false, "corrige mesmo em curva (sem o teste do mean_abs_w)");
+
+check(L6, "locxy", `
+void track_localization(robot_t& robot, float_list_t& w_list)
+{
+  robot.led = 0;
+  robot.align_index = -1;
+  if (robot.mean_abs_w < robot.mean_abs_w_tresh && robot.mean_abs_w < robot.prev_mean_abs_w) {
+    for (int i = 0; i < segment_list.size(); i++) {
+      segment_t seg = segment_list[i];
+      if (abs(dif_angle(normalize_angle(robot.thetae), seg.angle)) < robot.align_angle_tresh) {
+        robot.led = 1;
+        robot.align_index = i;
+        robot.thetae = seg.angle;
+        if (robot.align_index == 0) robot.xe = seg.Pi.x;
+        else if (robot.align_index == 1) robot.ye = seg.Pi.y;
+        break;
+      }
+    }
+  }
+}`, false, "troca x com y nos dois trocos");
+
+check(L6, "locgen", L6.locgen.solution.replace("Ps.y = 0;", ""), false, "esquece de anular a componente perpendicular");
 
 /* ========= 3c. REGRESSOES DO INTERPRETADOR MATLAB ========= */
 console.log("\n3c) Regressões do interpretador");
