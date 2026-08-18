@@ -26,11 +26,11 @@ window.SAUT_TOPICS = [
     { id:"trian",   name:"Triangulação e trilateração",    modules:["m4-mod5"] },
     { id:"fusao",   name:"Fusão sensorial",                modules:["m4-mod6"] },
     { id:"laser",   name:"EKF laser + validação",          modules:["m5-mod1","m5-mod2","m5-mod3","m5-mod4","m5-mod5","m5-mod6"] },
-    { id:"mcl",     name:"Localização Monte Carlo",        ms:"m6" },
-    { id:"mapm",    name:"Map matching",                   ms:"m6" }
+    { id:"mcl",     name:"Localização Monte Carlo",        modules:["m6-mod1","m6-mod2"] },
+    { id:"mapm",    name:"Map matching",                   modules:["m6-mod3","m6-mod4"] }
   ]},
   { area:"Tópicos Avançados", topics:[
-    { id:"slam",    name:"SLAM",                           ms:"m7" },
-    { id:"mrob",    name:"Multi-robô e robôs reais",       ms:"m7" }
+    { id:"slam",    name:"SLAM",                           modules:["m6-mod5","m6-mod6"] },
+    { id:"mrob",    name:"Multi-robô e robôs reais",       modules:["m7-mod1","m7-mod2","m7-mod3","m7-mod4"] }
   ]}
 ];

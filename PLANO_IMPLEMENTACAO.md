@@ -144,8 +144,13 @@ Perguntas do exame modelo (mapa no docx, Tabela 10) devem aparecer como exercíc
   (`js/track_sim.js`) + **M7 completo** (`js/data/lab6spec.js`, `js/data/m7lab.js`): 4 sub-tarefas
   da Lab 6 avaliadas e 2 módulos de deployment orientados a exame. Ver secção 12.10.
 - [ ] (feito) Lab 6 avaliável — ver tabela 12.6 (sem oráculo completo; ponderar avaliação só estrutural)
-- [ ] M6 conteúdo (stub) — PRÓXIMO PASSO: decks SAUT_Prob_Localization (23 págs) + SAUT_Loc_Map_Matching (27 págs); sem lab dedicada → módulo final = mini-teste estilo M0. Perguntas exame: MCL/kidnap, rejeição outliers (já introduzida no m5-mod2!), map matching P14, landmarks lineares. Atualizar topics.js (mcl, mapm) e graph.js (nós mcl, mapm).
-- [ ] M7 conteúdo (stub) — decks SLAM (38), MultiRobot (12), Drone (8) + Labs 6/7 (checklist guiado). Atualizar topics.js (slam, mrob) e graph.js (slam, mrob).
+- [x] M6 conteúdo completo (7 módulos, 53 subpáginas, 47 exercícios). ÂMBITO ALARGADO: além de
+  Prob_Localization (23) e Loc_Map_Matching (27), passou a incluir também **SAUT_SLAM (38)** — decidido
+  com o David em 2026-08-18, por o SLAM ser extensão do EKF e não matéria de robôs reais. Slides
+  extraídos para assets/slides/{problocal,mapmatch,slam}/. topics.js (mcl, mapm, slam) e graph.js
+  (nós mcl, mapm, slam com fig) atualizados. meta.js do M6 e do M7 reescrito em conformidade.
+- [x] M7 conteúdo completo (m7lab.js: deployment Lab 6, deployment Lab 7 ROS, Labwork 6 com C++
+  avaliado, Labwork 7). Nó mrob e tópico mrob ligados aos 4 módulos. O deck SLAM saiu daqui para o M6.
 
 ## 11. AVISO — escrita de ficheiros (sync Windows↔sandbox)
 Reescrever/editar via ferramenta de ficheiros um .js JÁ EXISTENTE corrompe a cópia do sandbox

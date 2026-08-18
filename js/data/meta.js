@@ -55,21 +55,21 @@ window.SAUT_META = [
     exame: "Perguntas 4 e 6 — funções validate_laser_measure e BeaconPoints: sabe escrevê-las de cor."
   },
   {
-    id: "m6", num: "M6", title: "Localização avançada", prio: "MÉDIA-ALTA",
-    short: "Monte Carlo (partículas, kidnap) e map matching em grelha.",
+    id: "m6", num: "M6", title: "Localização avançada e SLAM", prio: "MÉDIA-ALTA",
+    short: "Filtro de partículas e kidnap, map matching (Perfect Match) e SLAM.",
     lab: "Extensão teórica das Labs 4/5 — sem Lab dedicada, mas cai no exame.",
-    objetivo: "Cobrir localização probabilística (filtro de partículas) e localização absoluta por matching em grelha.",
-    decks: ["SAUT_Prob_Localization (23 págs, ALTA, ~1h32)", "SAUT_Loc_Map_Matching (27 págs, MÉDIA-ALTA, ~1h35)"],
-    tempo: "~3h07 de slides",
+    objetivo: "Fechar a localização em três passos: largar a hipótese gaussiana do EKF (partículas), localizar por correspondência com o mapa todo em vez de beacons isolados (map matching), e finalmente deixar cair a hipótese de o mapa ser conhecido (SLAM).",
+    decks: ["SAUT_Prob_Localization (23 págs, ALTA, ~1h32)", "SAUT_Loc_Map_Matching (27 págs, MÉDIA-ALTA, ~1h35)", "SAUT_SLAM (38 págs, MÉDIA, ~1h35)"],
+    tempo: "~4h42 de slides",
     exame: "Monte Carlo/kidnap, rejeição de outliers, map matching (P14), landmarks lineares."
   },
   {
     id: "m7", num: "M7", title: "Labs 6 e 7 — Robôs reais", prio: "BAIXA",
-    short: "SLAM, multi-robô e implementação em robôs reais (Pico, ROS).",
+    short: "Setup do ambiente, firmware e os algoritmos das Labs 1–3 em hardware real.",
     lab: "Lab 6 — robô diferencial real (Raspberry Pi Pico). Lab 7 — omni real com ROS.",
-    objetivo: "Fechar a cobertura: SLAM, multi-robô e robôs reais. Peso baixo no exame escrito; necessário para a defesa das Labs 6/7.",
-    decks: ["SAUT_SLAM (38 págs, BAIXA-MÉDIA, ~1h35)", "SAUT_MultiRobot (12 págs, BAIXA, ~24 min)", "Apresentacao_Drone (8 págs, BAIXA, ~12 min)"],
-    tempo: "~2h11 de slides + hardware/VM",
-    exame: "Raramente no exame escrito; foco na demonstração das Labs 6 e 7."
+    objetivo: "Passar do simulador ao hardware: preparar o ambiente (VM, ROS, firmware), perceber o que muda quando o robô é real, e reimplementar lá a odometria e o controlo das Labs 1–3.",
+    decks: ["Enunciado LabWork 6 — robô diferencial (Pico)", "Enunciado LabWork 7 + Guia de setup da VM (ROS)", "SAUT_MultiRobot (12 págs, BAIXA, ~24 min)", "Apresentacao_Drone (8 págs, BAIXA, ~12 min)"],
+    tempo: "~36 min de slides + setup e hardware",
+    exame: "Raramente no exame escrito; o peso está no setup e na demonstração das Labs 6 e 7."
   }
 ];

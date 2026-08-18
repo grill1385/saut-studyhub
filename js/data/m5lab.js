@@ -72,6 +72,98 @@ raios, montado <b>0.14 m atrás</b> da origem do robô.</div>`,
         slideRef: "SAUT_LabWork_5_EKF_Beacons_SimTwo (V4, 11Nov2024) + Loc_Validation"
       },
 
+      /* --------------------------------------------------- 0b. referência */
+      {
+        type: "theory",
+        title: "📋 Referência — globais, funções de matriz e mapa de células",
+        html: `
+<p>Tudo o que precisas de ter à mão nas sub-tarefas seguintes. Nada disto se declara — já existe.</p>
+
+<h4>Variáveis globais</h4>
+<table>
+  <tr><th>Nome</th><th>Tipo</th><th>O que é</th></tr>
+  <tr><td><code>x, y, theta</code></td><td>double</td><td>pose <b>estimada</b> — lida e escrita por quase tudo</td></tr>
+  <tr><td><code>vlin, omega</code></td><td>double</td><td>velocidades atuais (atenção: <code>vlin</code>, não <code>v</code>)</td></tr>
+  <tr><td><code>truex, truey, truetheta</code></td><td>double</td><td>pose verdadeira — <b>só</b> para calcular o erro, nunca para controlo</td></tr>
+  <tr><td><code>XR, P, Q, R</code></td><td>Matrix</td><td>estado 3×1, covariância 3×3, ruído modelo 2×2, ruído sensor 2×2</td></tr>
+  <tr><td><code>grad_f_X, grad_f_q, grad_h_x</code></td><td>Matrix</td><td>Jacobianos 3×3, 3×2, 2×3</td></tr>
+  <tr><td><code>LaserValues</code></td><td>Matrix</td><td>as distâncias dos raios; <code>Mgetv(LaserValues, i, 0)</code></td></tr>
+  <tr><td><code>firstRay, lastRay</code></td><td>integer</td><td>limites do varrimento</td></tr>
+  <tr><td><code>BeaconPos[j]</code></td><td>TPos</td><td><b>mapa</b>: posições conhecidas dos postes, j = 1..NBEACONS</td></tr>
+  <tr><td><code>BeaconCluster[j]</code></td><td>record</td><td>campos <code>.x .y .n</code> (associação) e <code>.dist .ang</code> (medida)</td></tr>
+</table>
+<p>Constantes: <code>NBEACONS</code>=3, <code>NBEAMS2</code>=180, <code>dt</code>=0.04,
+<code>ToMetres</code>, <code>WheelDist</code>, <code>lin_stddev</code>, <code>omega_stddev</code>,
+<code>sensD_stddev</code>, <code>sensA_stddev</code>.</p>
+
+<h4>Funções de matriz</h4>
+<p><b>Não há operadores aritméticos para matrizes.</b> Nada de <code>A*B</code>, <code>A+B</code>
+ou <code>-A</code> — tudo são chamadas de função.</p>
+<table>
+  <tr><th>Função</th><th>Faz</th></tr>
+  <tr><td><code>Mzeros(m,n)</code> / <code>Meye(n)</code></td><td>matriz de zeros / identidade</td></tr>
+  <tr><td><code>Madd(A,B)</code> / <code>Msub(A,B)</code></td><td>soma / subtração — sempre <b>dois</b> argumentos</td></tr>
+  <tr><td><code>MMult(A,B)</code> / <code>Mtran(A)</code> / <code>Minv(A)</code></td><td>produto / transposta / inversa</td></tr>
+  <tr><td><code>Msetv(M,i,j,v)</code> / <code>Mgetv(M,i,j)</code></td><td>elemento — <b>índices de base 0</b></td></tr>
+  <tr><td><code>RangeToMatrix(l,c, nl,nc)</code></td><td>folha → matriz</td></tr>
+  <tr><td><code>MatrixToRange(l,c, M)</code></td><td>matriz → folha</td></tr>
+</table>
+
+<h4>Mapa de células</h4>
+<table>
+  <tr><th>Bloco</th><th>Âncora</th><th>Dim</th><th>Células que escreves à mão</th></tr>
+  <tr><td><b>XR</b> (x, y, θ)</td><td>(33,1)</td><td>3×1</td><td>(33,1)=x, (34,1)=y, (35,1)=θ</td></tr>
+  <tr><td><b>P</b></td><td>(33,5)</td><td>3×3</td><td>— (só <code>MatrixToRange</code>)</td></tr>
+  <tr><td><b>R</b> (ruído sensor)</td><td>(38,1)</td><td>2×2</td><td><code>Msetv(R,0,0,rSensD)</code>, <code>Msetv(R,1,1,rSensA)</code></td></tr>
+  <tr><td><b>Q</b> (ruído modelo)</td><td>(38,5)</td><td>2×2</td><td>(38,5)=qV, (39,6)=qOmega</td></tr>
+  <tr><td><b>P inicial</b></td><td>(33,9)</td><td>3×3</td><td>vem da <b>folha</b>, não do script — se estiver vazia o filtro arranca com incerteza nula</td></tr>
+  <tr><td><b>df/dX</b></td><td>(42,1)</td><td>3×3</td><td>só (42,3) e (43,3) — o resto é a identidade da <code>Initialize</code></td></tr>
+  <tr><td><b>df/dq</b></td><td>(42,5)</td><td>3×2</td><td>(42,5) (42,6) (43,5) (43,6); o (44,6)=1 vem da <code>Initialize</code></td></tr>
+  <tr><td><b>dh/dX</b></td><td>(47,1)</td><td>2×3</td><td>(47,1) (47,2) (48,1) (48,2); o (47,3)=0 e (48,3)=−1 vêm da <code>Initialize</code></td></tr>
+  <tr><td><b>Z</b> (medida)</td><td>(51,1)</td><td>2×1</td><td>(51,1)=dist, (52,1)=ângulo</td></tr>
+  <tr><td><b>Z_E</b> (inovação)</td><td>(51,3)</td><td>2×1</td><td>(51,3)=Δdist, (52,3)=Δângulo</td></tr>
+  <tr><td><b>Kf</b> (ganho)</td><td>(51,5)</td><td>3×2</td><td>— (só <code>MatrixToRange</code>)</td></tr>
+</table>
+
+<h4>Porquê a ida e volta pelas células ★</h4>
+<p>Existem <b>duas representações do mesmo estado</b>, e ambas são necessárias:</p>
+<ul>
+  <li><code>x</code>, <code>y</code>, <code>theta</code> — escalares. É o que a odometria integra e
+  o que o <code>AssociateBeacons</code> e o cálculo do <code>dBeacon</code> usam. Todo o código
+  "normal" trabalha com estes.</li>
+  <li><code>XR</code> — matriz 3×1. É o que a álgebra do Kalman exige, porque
+  <code>Madd(XR, MMult(Kf, Z_E))</code> só opera sobre matrizes.</li>
+</ul>
+<p>A folha é a ponte entre as duas — e serve de dashboard ao mesmo tempo. O circuito por ciclo:</p>
+<pre class="pas">odometria  →  x, y, theta        (escalares)
+   ↓ SetRCValue(33..35, 1)
+células (33,1)..(35,1)
+   ↓ RangeToMatrix(33,1, 3,1)
+XR (3×1)                          ← o MotionModel acaba aqui
+   ↓ XR := Madd(XR, MMult(Kf, Z_E))     correção
+   ↓ MatrixToRange(33,1, XR)
+células (33,1)..(35,1)
+   ↓ GetRCValue(33,1) ...
+x, y, theta                       ← prontas para o ciclo seguinte</pre>
+<div class="hl"><b>Erro clássico:</b> terminar o <code>EKF_Update</code> logo a seguir ao
+<code>XR := Madd(...)</code>. A correção fica presa dentro do <code>XR</code>, as globais nunca são
+atualizadas, e o sistema comporta-se exatamente como odometria pura — o <code>P</code> até diminui,
+o que faz parecer que o filtro está a funcionar. Fecha sempre o circuito:</div>
+<div class="hl"><b>«Access violation» ao arrancar o filtro?</b> É quase sempre o
+<code>Minv</code> a tentar inverter uma matriz singular. Se deixaste <code>qV</code>,
+<code>qOmega</code>, <code>rSensD</code> e <code>rSensA</code> a zero (os valores do esqueleto),
+então <code>Q = R = 0</code>; com <code>Q = 0</code> o <code>P</code> nunca cresce, e
+<code>S = H·P·Hᵀ + R</code> dá a matriz nula. Faz primeiro a sub-tarefa da sintonia e confirma
+que o <code>P</code> inicial nas células (33,9)–(35,11) não está vazio.</div>
+<pre class="pas">XR := Madd(XR, MMult(Kf, Z_E));
+MatrixToRange(33,1, XR);
+x     := GetRCValue(33,1);
+y     := GetRCValue(34,1);
+theta := NormalizeAngle(GetRCValue(35,1));
+SetRCValue(35,1, format('%.4g', [theta]));   // re-escreve o θ já normalizado</pre>`,
+        slideRef: "control.pas da cena EKF_Beacon_Laser_Students"
+      },
+
       /* --------------------------------------------------- 1. odometria */
       code("predict",
         "Sub-tarefa 5.6.2 — odometria do robô diferencial",
@@ -176,10 +268,15 @@ distâncias. És tu que decides a que é que cada ponto pertence.</p>
 <p>A estratégia do professor é a mais simples possível — <i>nearest neighbour</i> com limiar fixo:
 converte-se cada ponto para o mundo e, se cair a menos de 0.1 m de um poste <b>conhecido</b>,
 junta-se ao cluster desse poste. Funciona porque o mapa é conhecido à partida.</p>
-<p>Dois detalhes de implementação:</p>
+<p>Três detalhes de implementação:</p>
 <ul>
   <li>Soma-se <b>0.02 m</b> à distância medida — o laser vê a <i>superfície</i> do poste, e o que
   interessa é o centro.</li>
+  <li><b>Raios sem eco.</b> Quando um raio não encontra nada dentro do alcance, o SimTwo devolve
+  um valor <b>negativo</b> nessa posição de <code>LaserValues</code>. Tens de os descartar com
+  <code>if MeasureDist &gt; 0</code> — <i>depois</i> de somares o 0.02, como faz o professor.
+  Sem esse teste projetas um ponto a distância negativa, ou seja na direção <b>oposta</b> à do
+  raio, que pode calhar dentro dos 10 cm de um poste e contaminar o centróide.</li>
   <li>O centróide é calculado com uma <b>média incremental</b>:
   <code>x := (x·(n−1) + novo)/n</code>, com o <code>n</code> <b>já incrementado</b>. Se
   incrementares o contador depois, a média fica errada.</li>
